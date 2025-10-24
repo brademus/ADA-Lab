@@ -1,0 +1,57 @@
+name: ADA Pipeline
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # run daily at 02:00 UTC (optional)
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Contact limit'
+        required: false
+        default: '2000'
+
+jobs:
+  run-ada:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write        # to upload artifacts
+      contents: read        # to checkout code
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx pydantic tenacity rich pandas tabulate
+
+      - name: Write HUBSPOT_TOKEN to .env
+        run: echo "HUBSPOT_TOKEN=${{ secrets.HUBSPOT_TOKEN }}" > .env
+
+      - name: Pull contacts
+        run: |
+          python cli.py pull-contacts --limit ${{ inputs.limit || 2000 }} --out contacts.csv
+
+      - name: Analyze and build reports
+        run: |
+          python cli.py analyze --source csv --path contacts.csv --out-dir reports
+          # (optional) render HTML summary if your CLI writes only Markdown:
+          if [ -f reports/summary.md ]; then
+            echo '<html><body><pre>' > reports/summary.html
+            sed 's/&/\&amp;/g; s/</\&lt;/g' reports/summary.md >> reports/summary.html
+            echo '</pre></body></html>' >> reports/summary.html
+          fi
+
+      - name: Upload reports artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ada-reports
+          path: |
+            reports/**
+            contacts.csv
