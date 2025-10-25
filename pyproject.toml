@@ -1,0 +1,16 @@
+[project]
+name = "ada"
+version = "0.1.0"
+description = "ADA: Analyze CRM contacts and produce actionable lead insights."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx",
+  "pydantic",
+  "tenacity",
+  "rich",
+  "pandas",
+  "tabulate"
+]
+
+[tool.setuptools]
+py-modules = []
