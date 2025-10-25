@@ -31,7 +31,7 @@ jobs:
 
       - name: Write HUBSPOT_TOKEN to .env
         env:
-          HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}
+          HUBSPOT_TOKEN=${{ secrets.HUBSPOT_TOKEN }}
         run: echo "HUBSPOT_TOKEN=${HUBSPOT_TOKEN}" > .env
 
       - name: Pull contacts
