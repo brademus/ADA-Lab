@@ -8,12 +8,14 @@ on:
         required: false
         default: "2000"
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 2 * * *"   # 02:00 UTC daily
 
 jobs:
   run-ada:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HUBSPOT_TOKEN: ${{ secrets.HUBSPOT_TOKEN }}   # make token available to all steps
 
     steps:
       - name: Checkout repo
@@ -29,8 +31,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install httpx pydantic tenacity rich pandas tabulate
 
+      # Optional debug: confirm the env is present (masked in logs)
+      - name: Debug env presence
+        run: |
+          if [ -z "${HUBSPOT_TOKEN:-}" ]; then
+            echo "HUBSPOT_TOKEN is EMPTY"; exit 2
+          else
+            echo "HUBSPOT_TOKEN length: ${#HUBSPOT_TOKEN}"
+          fi
+
       - name: Pull contacts
-        run: python cli.py pull-contacts --limit ${{ inputs.limit || 2000 }} --out contacts.csv
+        run: python cli.py pull-contacts --limit ${{ inputs.limit }} --out contacts.csv
 
       - name: Analyze contacts
         run: python cli.py analyze --source csv --path contacts.csv --out-dir reports
@@ -40,7 +51,7 @@ jobs:
           python - << 'PY'
           from pathlib import Path
           md = Path("reports/summary.md").read_text(encoding="utf-8")
-          html = f"""<html><head><meta charset="utf-8"><style>
+          html = f"""<html><head><meta charset='utf-8'><style>
           body{{font-family:system-ui;max-width:980px;margin:40px auto;padding:0 20px}}
           pre,code{{white-space:pre-wrap}}
           table{{border-collapse:collapse}} td,th{{border:1px solid #ddd;padding:6px}}
