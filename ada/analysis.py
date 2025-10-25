@@ -5,7 +5,10 @@ def score_contacts(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     has_email = df["email"].notna().astype(int) if "email" in df.columns else 0
     has_owner = df["ownerId"].notna().astype(int) if "ownerId" in df.columns else 0
-    lifecycle = (df.get("lifecyclestage") or pd.Series([""]*len(df))).astype(str)
+if "lifecyclestage" in df.columns:
+    lifecycle = df["lifecyclestage"].astype(str)
+else:
+    lifecycle = pd.Series([""] * len(df))
     activity = df.get("lastmodifieddate")
     if activity is not None:
         recency = pd.to_datetime(activity, errors="coerce")
