@@ -29,10 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install httpx pydantic tenacity rich pandas tabulate
 
-      - name: Write HUBSPOT_TOKEN to .env
-        env:
-          HUBSPOT_TOKEN=${{ secrets.HUBSPOT_TOKEN }}
-        run: echo "HUBSPOT_TOKEN=${HUBSPOT_TOKEN}" > .env
+            - name: Write HUBSPOT_TOKEN to .env
+        run: |
+          echo "HUBSPOT_TOKEN=${{ secrets.HUBSPOT_TOKEN }}" > .env
 
       - name: Pull contacts
         run: python cli.py pull-contacts --limit ${{ inputs.limit || 2000 }} --out contacts.csv
