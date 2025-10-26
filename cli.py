@@ -75,7 +75,18 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
         # debugging in CI; also print a short message to the console.
         import traceback
         tb = traceback.format_exc()
-        (c_dir / "error.txt").write_text(tb, encoding="utf-8")
+        # If this was a HubSpot listing failure, append actionable
+        # troubleshooting guidance so the CI artifact is helpful to users.
+        guidance = ""
+        if isinstance(e, RuntimeError) and "HubSpot API listing failed" in str(e):
+            guidance = (
+                "\n\n---\nTroubleshooting guidance:\n"
+                "- The HubSpot token used may be missing required scopes (e.g. 'crm.objects.contacts.read').\n"
+                "- Some HubSpot portals restrict the v3 listing/search endpoints; consider providing a per-client 'hubspot_token' in your clients config, or pre-exporting a 'contacts.csv' and using --skip-pull.\n"
+                "- You can run 'python cli.py owners' locally to validate the token and its access.\n"
+                "- See the diagnostics above for raw response bodies from the API.\n"
+            )
+        (c_dir / "error.txt").write_text(tb + guidance, encoding="utf-8")
         print(f"[red]Audit FAILED for {c.name} ({c.slug}) → {type(e).__name__}: {e}")
 
 def cmd_audit(args):
