@@ -31,6 +31,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install httpx pydantic tenacity rich pandas tabulate pyyaml
 
+      - name: Validate HUBSPOT_TOKEN
+        # Run a quick HubSpot call to fail fast if the token is missing or
+        # doesn't have the expected scopes. This helps give clearer CI
+        # failure messages instead of opaque HTTP 400/401 later in the run.
+        run: |
+          python - <<'PY'
+          import sys
+          try:
+              from ada import hubspot
+              owners = hubspot.list_owners()
+              print(f"HUBSPOT_TOKEN validated: found {len(owners)} owners")
+          except Exception as e:
+              print("HUBSPOT_TOKEN validation failed:", e)
+              sys.exit(2)
+          PY
+
       - name: Write clients.toml
         run: |
           echo "${{ secrets.CLIENTS_TOML_ENCODED }}" | base64 -d > clients.toml
