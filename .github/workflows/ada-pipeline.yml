@@ -33,7 +33,7 @@ jobs:
 
       - name: Write clients.toml
         run: |
-          echo "${{ secrets.CLIENTS_TOML_BASE64 }}" | base64 -d > clients.toml
+          echo "${{ secrets.CLIENTS_TOML_ENCODED }}" | base64 -d > clients.toml
           test -s clients.toml || (echo "clients.toml empty" && exit 2)
 
       - name: Run batch audits
