@@ -48,18 +48,19 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
         m = collect_metrics(cdir)
         link = m.get("summary_href") or ""
         link_html = f'<a href="{c.slug}/{link}">Open</a>' if link else "—"
-        failed = (cdir / "error.txt").exists()
-        status = "FAILED" if failed else ""
-        rows.append(
-            "<tr>"
-            f"<td>{c.name} <small>({c.slug})</small> {status and f'<span style=\"color:red;font-weight:600\">{status}</span>'}</td>"
-            f"<td>{m.get('last_audited','')}</td>"
-            f"<td>{m.get('mean_quality',0.0):.2f}</td>"
-            f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
-            f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
-            f"<td>{link_html}</td>"
-            "</tr>"
-        )
+    failed = (cdir / "error.txt").exists()
+    status = "FAILED" if failed else ""
+    status_html = f'<span style="color:red;font-weight:600">{status}</span>' if status else ""
+    rows.append(
+      "<tr>"
+      f"<td>{c.name} <small>({c.slug})</small> {status_html}</td>"
+      f"<td>{m.get('last_audited','')}</td>"
+      f"<td>{m.get('mean_quality',0.0):.2f}</td>"
+      f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
+      f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
+      f"<td>{link_html}</td>"
+      "</tr>"
+    )
     html = f"""<!doctype html>
 <html>
 <head>

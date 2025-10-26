@@ -28,8 +28,9 @@ def score_contacts(df: pd.DataFrame) -> pd.DataFrame:
         recency_score = pd.Series([0] * len(df))
 
     # Lifecycle boost (0 or 20)
+    # Use a regex without capturing groups to avoid pandas warning about match groups
     lifecycle_boost = lifecycle.str.contains(
-        r"(opportunity|customer|marketingqualifiedlead|salesqualifiedlead)",
+        r"opportunity|customer|marketingqualifiedlead|salesqualifiedlead",
         case=False, regex=True
     ).astype(int) * 20
 
