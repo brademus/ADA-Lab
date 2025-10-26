@@ -15,10 +15,12 @@ def cmd_owners(args):
         print({"id": o.get("id"), "email": o.get("email"), "firstName": o.get("firstName"), "lastName": o.get("lastName")})
 
 def _pull_contacts(limit: int, out_path: Path) -> int:
-    # Keep the properties list minimal and HubSpot-safe. 'hs_object_id' is
-    # not a contact property accepted in the properties query and can cause
-    # a 400 Bad Request from the API. Exclude it to avoid that error.
-    props = ["email", "firstname", "lastname", "lifecyclestage", "hubspot_owner_id", "lastmodifieddate"]
+    # Request a very small, safe set of properties to avoid API errors
+    # caused by requesting properties that don't exist in the target
+    # HubSpot account. If you need owner load and lastmodifieddate in
+    # reports, we can fetch them in a follow-up call per-contact
+    # (but keep initial requests conservative for CI reliability).
+    props = ["email", "firstname", "lastname", "lifecyclestage"]
     rows = []
     for c in hubspot.stream_contacts(max_total=limit, properties=props):
         p = c.get("properties", {}) or {}
