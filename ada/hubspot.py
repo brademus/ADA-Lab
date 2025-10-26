@@ -45,21 +45,53 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
             # If the listing endpoint fails (some HubSpot accounts reject
             # it), try the search endpoint as a fallback which is often
             # more tolerant of filtering and account differences.
+            # We'll attempt two fallback payloads and capture rich
+            # diagnostics if all attempts fail so CI artifacts contain
+            # the raw responses for easier triage.
+            diagnostics = []
+            def _resp_info(resp):
+                try:
+                    text = resp.text
+                except Exception:
+                    text = "(unable to read body)"
+                return {
+                    "status_code": getattr(resp, "status_code", None),
+                    "headers": dict(getattr(resp, "headers", {})),
+                    "body": text,
+                }
+
+            # First fallback: search with empty filterGroups (works in many accounts)
             try:
-                # Use a valid search payload: an empty list of filterGroups
-                # and a limit. The search endpoint expects this structure and
-                # will return contacts where listing fails for compatibility.
                 alt_body = {"filterGroups": [], "limit": min(limit, 100)}
                 r2 = c.post("/crm/v3/objects/contacts/search", json=alt_body)
-                r2.raise_for_status()
-                return r2.json()
-            except Exception:
-                body = None
                 try:
-                    body = r.text
+                    r2.raise_for_status()
+                    return r2.json()
                 except Exception:
-                    body = "(unable to read response body)"
-                raise RuntimeError(f"HubSpot API error {r.status_code}: {body}") from e
+                    diagnostics.append(("search(empty filterGroups)", _resp_info(r2)))
+            except Exception as err:
+                diagnostics.append(("search(empty filterGroups)_request_error", str(err)))
+
+            # Second fallback: some portals accept a query-style body
+            try:
+                alt_body2 = {"query": "", "limit": min(limit, 100)}
+                r3 = c.post("/crm/v3/objects/contacts/search", json=alt_body2)
+                try:
+                    r3.raise_for_status()
+                    return r3.json()
+                except Exception:
+                    diagnostics.append(("search(query=\"\")", _resp_info(r3)))
+            except Exception as err:
+                diagnostics.append(("search(query)_request_error", str(err)))
+
+            # Nothing worked — include full diagnostics from the original
+            # listing response plus any fallback responses we saw.
+            try:
+                orig_body = r.text
+            except Exception:
+                orig_body = "(unable to read response body)"
+            info = {"original": {"status_code": getattr(r, "status_code", None), "body": orig_body}, "fallbacks": diagnostics}
+            raise RuntimeError(f"HubSpot API listing failed: {info}") from e
 
 def stream_contacts(max_total:int=2000, properties:Optional[List[str]]=None):
     total, after = 0, None
