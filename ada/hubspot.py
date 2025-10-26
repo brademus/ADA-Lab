@@ -40,7 +40,17 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
         params.append(("after", after))
     with _client() as c:
         r = c.get("/crm/v3/objects/contacts", params=params)
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # Surface the server response body to make CI error files
+            # more actionable (shows which property or param caused the 400).
+            body = None
+            try:
+                body = r.text
+            except Exception:
+                body = "(unable to read response body)"
+            raise RuntimeError(f"HubSpot API error {r.status_code}: {body}") from e
         return r.json()
 
 def stream_contacts(max_total:int=2000, properties:Optional[List[str]]=None):
