@@ -15,7 +15,10 @@ def cmd_owners(args):
         print({"id": o.get("id"), "email": o.get("email"), "firstName": o.get("firstName"), "lastName": o.get("lastName")})
 
 def _pull_contacts(limit: int, out_path: Path) -> int:
-    props = ["email","firstname","lastname","lifecyclestage","hs_object_id","hubspot_owner_id","lastmodifieddate"]
+    # Keep the properties list minimal and HubSpot-safe. 'hs_object_id' is
+    # not a contact property accepted in the properties query and can cause
+    # a 400 Bad Request from the API. Exclude it to avoid that error.
+    props = ["email", "firstname", "lastname", "lifecyclestage", "hubspot_owner_id", "lastmodifieddate"]
     rows = []
     for c in hubspot.stream_contacts(max_total=limit, properties=props):
         p = c.get("properties", {}) or {}
