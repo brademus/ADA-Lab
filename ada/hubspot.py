@@ -28,16 +28,14 @@ def list_owners() -> List[Dict]:
 
 @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(5))
 def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[List[str]]=None) -> Dict:
-    # Use repeated 'properties' query params instead of a single
-    # comma-separated value. HubSpot's API accepts both, but some
-    # requests can return 400 for the comma form; sending as a list
-    # of tuples matches the server's expectations and avoids that error.
-    params: List[tuple] = [("limit", str(min(limit, 100)))]
-    if properties:
-        for p in properties:
-            params.append(("properties", p))
+    # Build a conservative request that only includes limit/after. Some
+    # HubSpot accounts reject property filters in this endpoint and return
+    # 400 Invalid request; to maximize compatibility in CI we omit the
+    # `properties` parameter here. Consumers that need additional fields
+    # should fetch per-contact details or use the search endpoint.
+    params = {"limit": min(limit, 100)}
     if after:
-        params.append(("after", after))
+        params["after"] = after
     with _client() as c:
         r = c.get("/crm/v3/objects/contacts", params=params)
         try:
