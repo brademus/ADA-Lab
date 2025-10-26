@@ -86,6 +86,23 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
 
             # Nothing worked — include full diagnostics from the original
             # listing response plus any fallback responses we saw.
+            # Third fallback: try the legacy contacts endpoint which some
+            # portals still support. We'll normalize its response into the
+            # same shape (results list) so callers don't need to change.
+            try:
+                legacy_params = {"count": min(limit, 100)}
+                r4 = c.get("/contacts/v1/lists/all/contacts/all", params=legacy_params)
+                try:
+                    r4.raise_for_status()
+                    j = r4.json()
+                    # Normalize: legacy returns 'contacts' array
+                    results = j.get("contacts", [])
+                    return {"results": results}
+                except Exception:
+                    diagnostics.append(("legacy(contacts_v1)", _resp_info(r4)))
+            except Exception as err:
+                diagnostics.append(("legacy_request_error", str(err)))
+
             try:
                 orig_body = r.text
             except Exception:
