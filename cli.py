@@ -52,7 +52,11 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
     c_dir = out_root / c.slug
     c_dir.mkdir(parents=True, exist_ok=True)
     try:
-        os.environ["HUBSPOT_TOKEN"] = c.hubspot_token
+        # Only override the global HUBSPOT_TOKEN if this client provides one.
+        # This lets CI provide a shared HUBSPOT_TOKEN via secrets while
+        # per-client tokens (if present) will override it.
+        if c.hubspot_token:
+            os.environ["HUBSPOT_TOKEN"] = c.hubspot_token
         contacts_csv = c_dir / "contacts.csv"
         if not skip_pull:
             n = _pull_contacts(limit=limit, out_path=contacts_csv)
@@ -62,8 +66,12 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
                 raise FileNotFoundError(f"{contacts_csv} not found (cannot --skip-pull without an existing CSV)")
         _analyze_csv(contacts_csv, c_dir)
     except Exception as e:
-        (c_dir / "error.txt").write_text(f"{type(e).__name__}: {e}", encoding="utf-8")
-        print(f"[red]Audit FAILED for {c.name} ({c.slug}) → {e}")
+        # Write a full traceback to the per-client error file for easier
+        # debugging in CI; also print a short message to the console.
+        import traceback
+        tb = traceback.format_exc()
+        (c_dir / "error.txt").write_text(tb, encoding="utf-8")
+        print(f"[red]Audit FAILED for {c.name} ({c.slug}) → {type(e).__name__}: {e}")
 
 def cmd_audit(args):
     clients = load_clients(args.config)

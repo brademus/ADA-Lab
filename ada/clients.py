@@ -16,10 +16,14 @@ except Exception:  # pragma: no cover
 
 
 class ClientConfig(BaseModel):
-    """Strongly-typed client configuration for Consultant Mode."""
+    """Strongly-typed client configuration for Consultant Mode.
+
+    hubspot_token is optional: if omitted the global HUBSPOT_TOKEN environment
+    variable (for example provided by CI) will be used.
+    """
     slug: str = Field(..., description="Stable machine slug (e.g., 'acme_corp').")
     name: str = Field(..., description="Human readable client name.")
-    hubspot_token: str = Field(..., description="HubSpot Private App Access Token (PAT).")
+    hubspot_token: str | None = Field(None, description="Optional HubSpot Private App Access Token (PAT).")
     overrides: Dict[str, Any] = Field(default_factory=dict, description="Optional per-client overrides.")
 
 
@@ -81,8 +85,6 @@ def load_clients(path: str) -> List[ClientConfig]:
         slug = slugify(key)
         name = cfg.get("name") or slug.replace("_", " ").title()
         token = cfg.get("hubspot_token")
-        if not token:
-            raise ValueError(f"Missing 'hubspot_token' for section [{section_key}]")
         overrides = cfg.get("overrides") or {}
         clients.append(ClientConfig(slug=slug, name=name, hubspot_token=token, overrides=overrides))
     if not clients:
