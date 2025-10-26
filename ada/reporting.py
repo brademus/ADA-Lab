@@ -29,14 +29,15 @@ def _dormant_mask(df: pd.DataFrame, days: int = 180) -> pd.Series:
     if "lastmodifieddate" not in df.columns:
         return pd.Series([True] * len(df))
     ts = pd.to_datetime(df["lastmodifieddate"], errors="coerce", utc=True)
-    cutoff = pd.Timestamp.utcnow().tz_localize("UTC") - pd.Timedelta(days=days)
+    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)
     return ts.isna() | (ts < cutoff)
 
 def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    top = df.sort_values("lead_score", ascending=False)
+    # Defensive: sort by lead_score only if present (score_contacts normally adds it)
+    top = df.sort_values("lead_score", ascending=False) if "lead_score" in df.columns else df
     top.to_csv(out / "lead_scores.csv", index=False)
     top.to_json(out / "lead_scores.jsonl", orient="records", lines=True)
 
