@@ -46,7 +46,10 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
             # it), try the search endpoint as a fallback which is often
             # more tolerant of filtering and account differences.
             try:
-                alt_body = {"limit": min(limit, 100)}
+                # Use a valid search payload: an empty list of filterGroups
+                # and a limit. The search endpoint expects this structure and
+                # will return contacts where listing fails for compatibility.
+                alt_body = {"filterGroups": [], "limit": min(limit, 100)}
                 r2 = c.post("/crm/v3/objects/contacts/search", json=alt_body)
                 r2.raise_for_status()
                 return r2.json()
