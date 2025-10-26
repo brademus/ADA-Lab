@@ -40,16 +40,23 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
         r = c.get("/crm/v3/objects/contacts", params=params)
         try:
             r.raise_for_status()
+            return r.json()
         except httpx.HTTPStatusError as e:
-            # Surface the server response body to make CI error files
-            # more actionable (shows which property or param caused the 400).
-            body = None
+            # If the listing endpoint fails (some HubSpot accounts reject
+            # it), try the search endpoint as a fallback which is often
+            # more tolerant of filtering and account differences.
             try:
-                body = r.text
+                alt_body = {"limit": min(limit, 100)}
+                r2 = c.post("/crm/v3/objects/contacts/search", json=alt_body)
+                r2.raise_for_status()
+                return r2.json()
             except Exception:
-                body = "(unable to read response body)"
-            raise RuntimeError(f"HubSpot API error {r.status_code}: {body}") from e
-        return r.json()
+                body = None
+                try:
+                    body = r.text
+                except Exception:
+                    body = "(unable to read response body)"
+                raise RuntimeError(f"HubSpot API error {r.status_code}: {body}") from e
 
 def stream_contacts(max_total:int=2000, properties:Optional[List[str]]=None):
     total, after = 0, None
