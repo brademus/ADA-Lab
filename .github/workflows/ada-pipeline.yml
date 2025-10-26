@@ -47,6 +47,25 @@ jobs:
               sys.exit(2)
           PY
 
+      - name: Check HubSpot contacts access
+        # Attempt a minimal GET to the v3 contacts listing endpoint and
+        # print the status and body. If this returns 400/403 it indicates
+        # the token is missing required scopes or the portal restricts
+        # this endpoint — the step exits non-zero to fail fast.
+        run: |
+          set -e
+          echo "Checking /crm/v3/objects/contacts?limit=1"
+          resp=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $HUBSPOT_TOKEN" "https://api.hubapi.com/crm/v3/objects/contacts?limit=1")
+          body=$(echo "$resp" | sed '$d')
+          code=$(echo "$resp" | tail -n1)
+          echo "HTTP status: $code"
+          echo "Response body:"
+          echo "$body"
+          if [ "$code" != "200" ]; then
+            echo "HubSpot contacts check failed with status $code"
+            exit 2
+          fi
+
       - name: Write clients.toml
         run: |
           echo "${{ secrets.CLIENTS_TOML_ENCODED }}" | base64 -d > clients.toml
