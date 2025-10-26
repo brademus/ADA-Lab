@@ -57,11 +57,26 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
     c_dir = out_root / c.slug
     c_dir.mkdir(parents=True, exist_ok=True)
     try:
-        # Only override the global HUBSPOT_TOKEN if this client provides one.
-        # This lets CI provide a shared HUBSPOT_TOKEN via secrets while
-        # per-client tokens (if present) will override it.
+        # Use per-client token only if it validates; otherwise fall back
+        # to the global HUBSPOT_TOKEN. This prevents placeholder or
+        # malformed per-client tokens in `clients.toml` from breaking the
+        # whole audit. We validate by calling a lightweight owners check.
+        original_token = os.getenv("HUBSPOT_TOKEN")
+        used_per_client_token = False
         if c.hubspot_token:
             os.environ["HUBSPOT_TOKEN"] = c.hubspot_token
+            try:
+                # lightweight validation; will raise on auth/permission errors
+                hubspot.list_owners()
+                used_per_client_token = True
+                print(f"[blue]Using per-client HubSpot token for {c.slug}")
+            except Exception as e:
+                # Restore original and continue with global token
+                if original_token is not None:
+                    os.environ["HUBSPOT_TOKEN"] = original_token
+                else:
+                    os.environ.pop("HUBSPOT_TOKEN", None)
+                print(f"[yellow]Per-client token for {c.slug} failed validation, falling back to global token: {e}")
         contacts_csv = c_dir / "contacts.csv"
         if not skip_pull:
             n = _pull_contacts(limit=limit, out_path=contacts_csv)
@@ -88,6 +103,16 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
             )
         (c_dir / "error.txt").write_text(tb + guidance, encoding="utf-8")
         print(f"[red]Audit FAILED for {c.name} ({c.slug}) → {type(e).__name__}: {e}")
+    finally:
+        # Ensure we restore the original HUBSPOT_TOKEN after the client run
+        try:
+            if 'original_token' in locals():
+                if original_token is not None:
+                    os.environ["HUBSPOT_TOKEN"] = original_token
+                else:
+                    os.environ.pop("HUBSPOT_TOKEN", None)
+        except Exception:
+            pass
 
 def cmd_audit(args):
     clients = load_clients(args.config)
