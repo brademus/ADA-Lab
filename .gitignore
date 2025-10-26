@@ -14,3 +14,7 @@ reports/
 # Consultant Mode
 clients.toml
 audits/
+
+# DO NOT COMMIT
+# local clients config and encoded copy
+clients.toml.b64
