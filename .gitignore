@@ -10,7 +10,3 @@ reports/
 # editors / OS
 .vscode/
 .DS_Store
-
-# Consultant Mode
-clients.toml
-audits/
