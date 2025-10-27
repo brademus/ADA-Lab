@@ -12,15 +12,15 @@ on:
         required: false
         default: "5000"
       APPROVE_IDS:
-        description: CSV of message ids to approve (optional)
+        description: CSV of message IDs to approve (optional)
         required: false
         default: ""
       SEND_NOW:
-        description: 'Set to 1 to send approved messages'
+        description: "Set to '1' to send approved messages"
         required: false
         default: "0"
       REPLIES_SINCE:
-        description: 'Ingest replies since (days), e.g., 7'
+        description: Days back to ingest replies (e.g. '7')
         required: false
         default: ""
   push:
@@ -109,22 +109,25 @@ jobs:
         run: |
           python -m ada.ci_validate audits
 
-      # Conditional outreach gates for manual dispatches
-      - name: Approve drafted messages
+      # Conditional outreach gates
+      - name: Approve drafted messages (gated)
         if: ${{ inputs.APPROVE_IDS != '' }}
         run: |
-          python cli.py outreach approve --client "${{ inputs.client }}" --id ${{ inputs.APPROVE_IDS }}
+          IFS=',' read -ra IDS <<< "${{ inputs.APPROVE_IDS }}"
+          ARGS=""
+          for id in "${IDS[@]}"; do ARGS="$ARGS --id $id"; done
+          python cli.py outreach approve --client "${{ inputs.client }}" $ARGS --out-root audits
 
-      - name: Send approved messages
+      - name: Send approved messages (gated)
         if: ${{ inputs.SEND_NOW == '1' }}
         run: |
-          python cli.py outreach send --client "${{ inputs.client }}" --max 25
+          python cli.py outreach send --client "${{ inputs.client }}" --max 25 --out-root audits
 
-      - name: Ingest replies and compute metrics
+      - name: Ingest replies + rollup metrics (gated)
         if: ${{ inputs.REPLIES_SINCE != '' }}
         run: |
-          python cli.py outreach replies --client "${{ inputs.client }}" --since-days "${{ inputs.REPLIES_SINCE }}"
-          python cli.py outreach metrics --client "${{ inputs.client }}"
+          python cli.py outreach replies --client "${{ inputs.client }}" --since-days "${{ inputs.REPLIES_SINCE }}" --out-root audits
+          python cli.py outreach metrics --client "${{ inputs.client }}" --out-root audits
 
       - name: Upload audits artifact
         uses: actions/upload-artifact@v4
