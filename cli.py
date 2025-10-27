@@ -189,7 +189,27 @@ def cmd_outreach_draft(args):
         count = 0
         for cid in plan.get('targets', [])[: int(args.limit)]:
             info = contacts_map.get(cid, {})
-            contact = schemas.Contact(id=cid, email=info.get('email'), first_name=info.get('firstName'), last_name=info.get('lastName'), owner_id=info.get('ownerId'), lifecycle=info.get('lifecyclestage'), last_modified=None, score=None)
+            # Guard against pandas NaN values coming from CSV by converting them to None
+            def _clean(v):
+                try:
+                    import pandas as pd  # type: ignore
+                    return None if pd.isna(v) else v
+                except Exception:
+                    try:
+                        import math
+                        return None if isinstance(v, float) and math.isnan(v) else v
+                    except Exception:
+                        return v
+            contact = schemas.Contact(
+                id=cid,
+                email=_clean(info.get('email')),
+                first_name=_clean(info.get('firstName')),
+                last_name=_clean(info.get('lastName')),
+                owner_id=_clean(info.get('ownerId')),
+                lifecycle=_clean(info.get('lifecyclestage')),
+                last_modified=None,
+                score=None,
+            )
             subj, body = templates.render(contact, getattr(c, 'brand_voice', None))
             # create draft message and save
             try:
