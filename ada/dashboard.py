@@ -18,8 +18,13 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
         "mean_quality": 0.0,
         "dormant_pct": 0.0,
         "owner_imbalance_pct": 0.0,
-        "last_audited": "",
-        "summary_href": "summary.html" if summary_html.exists() else ("summary.md" if summary_md.exists() else ""),
+    "last_audited": "",
+    "summary_href": "summary.html" if summary_html.exists() else ("summary.md" if summary_md.exists() else ""),
+    "contacted": 0,
+    "replies": 0,
+    "meetings": 0,
+    "reply_rate": 0.0,
+    "outbox_link": "outbox.sqlite" if (client_dir / "outbox.sqlite").exists() else "",
     }
     if summary_json.exists():
         try:
@@ -28,6 +33,11 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
             insights["dormant_pct"] = float(data.get("dormant_pct", 0.0))
             insights["owner_imbalance_pct"] = float(data.get("owner_imbalance_pct", 0.0))
             insights["last_audited"] = str(data.get("ts_utc", ""))
+            # outreach merge
+            insights["contacted"] = int(data.get("contacted", 0))
+            insights["replies"] = int(data.get("replies", 0))
+            insights["meetings"] = int(data.get("meetings", 0))
+            insights["reply_rate"] = float(data.get("reply_rate", 0.0))
             return insights
         except Exception:
             pass
@@ -58,6 +68,9 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
           f"<td>{m.get('mean_quality',0.0):.2f}</td>"
           f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
           f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
+          f"<td>{m.get('contacted',0)}</td>"
+          f"<td>{m.get('replies',0)}</td>"
+          f"<td>{m.get('reply_rate',0.0):.2f}</td>"
           f"<td>{link_html}</td>"
           "</tr>"
         )
@@ -87,6 +100,9 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
         <th>Avg Quality</th>
         <th>% Dormant</th>
         <th>Owner Load</th>
+        <th>Contacted</th>
+        <th>Replies</th>
+        <th>Reply Rate</th>
         <th>Report</th>
       </tr>
     </thead>
