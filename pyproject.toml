@@ -9,7 +9,8 @@ dependencies = [
   "tenacity",
   "rich",
   "pandas",
-  "tabulate"
+  "tabulate",
+  "pyyaml"
 ]
 
 [tool.setuptools]

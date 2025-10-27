@@ -10,7 +10,10 @@ from ada.clients import load_clients, get_client, ClientConfig
 from ada.dashboard import render_master_index
 from ada.core import schemas
 from ada.connectors import hubspot_contacts, gmail_mail
+from ada.connectors.outlook_mail import OutlookConnector
 from ada.orchestrator import policy, templates
+from ada.learning import variants as variants_engine
+from ada.templates.library import get_variants_for_set
 from ada.store import sqlite as store
 from datetime import datetime, timedelta
 import json
@@ -47,19 +50,19 @@ def cmd_pull_contacts(args):
     n = _pull_contacts(limit=int(args.limit), out_path=out)
     print(f"[green]Wrote {n} contacts → {out}")
 
-def _analyze_csv(csv_path: Path, out_dir: Path) -> None:
+def _analyze_csv(csv_path: Path, out_dir: Path, *, pure_html: bool = False) -> None:
     df = pd.read_csv(csv_path)
     df = score_contacts(df)
     _ = owner_rollup(df)
-    write_outputs(df, str(out_dir))
+    write_outputs(df, str(out_dir), pure_html=pure_html)
     print(f"[green]Reports written to {out_dir}")
 
 def cmd_analyze(args):
     if args.source != "csv":
         raise SystemExit("Only --source csv is currently supported.")
-    _analyze_csv(Path(args.path), Path(args.out_dir))
+    _analyze_csv(Path(args.path), Path(args.out_dir), pure_html=bool(args.pure_html))
 
-def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull: bool) -> None:
+def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull: bool, *, pure_html: bool = False) -> None:
     c_dir = out_root / c.slug
     c_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -90,7 +93,7 @@ def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull
         else:
             if not contacts_csv.exists():
                 raise FileNotFoundError(f"{contacts_csv} not found (cannot --skip-pull without an existing CSV)")
-        _analyze_csv(contacts_csv, c_dir)
+        _analyze_csv(contacts_csv, c_dir, pure_html=pure_html)
     except Exception as e:
         # Write a full traceback to the per-client error file for easier
         # debugging in CI; also print a short message to the console.
@@ -128,7 +131,7 @@ def cmd_audit(args):
     targets = clients if args.all else [get_client(clients, args.client)]
     for c in targets:
         print(f"[bold]Auditing: {c.name} ({c.slug})[/bold]")
-        _run_audit_for_client(c, limit=int(args.limit), out_root=out_root, skip_pull=bool(args.skip_pull))
+        _run_audit_for_client(c, limit=int(args.limit), out_root=out_root, skip_pull=bool(args.skip_pull), pure_html=bool(args.pure_html))
     if args.all:
         render_master_index(clients, out_root, out_root / "index.html")
         print(f"[green]Master dashboard written → {out_root / 'index.html'}")
@@ -145,7 +148,13 @@ def _plan_outreach_for_client(c: ClientConfig, limit: int, out_root: Path) -> in
     for r in rows:
         if r.score is None:
             r.score = 0.0
-    plan = policy.build_plan(c.slug, rows, daily_cap=getattr(c, 'daily_cap', 25), limit=limit)
+    plan = policy.build_plan(
+        c.slug,
+        rows,
+        daily_cap=getattr(c, 'daily_cap', 25),
+        limit=limit,
+        overrides=getattr(c, 'overrides', {}) or {},
+    )
     (c_dir / "plan.json").write_text(json.dumps(plan.dict(), default=str), encoding="utf-8")
     return len(plan.targets)
 
@@ -160,6 +169,16 @@ def cmd_outreach_plan(args):
         print(f"[green]{c.slug}: planned {n} targets")
         total += n
     print(f"[blue]Planned total: {total}")
+
+
+def _mail_connector_for_client(c: ClientConfig):
+    cfg = {**c.__dict__}
+    if getattr(c, 'overrides', None):
+        cfg.update(c.overrides)
+    channel = cfg.get('channel', 'gmail')
+    if channel == 'outlook':
+        return OutlookConnector(cfg)
+    return gmail_mail.GmailConnector(cfg)
 
 
 def cmd_outreach_draft(args):
@@ -187,6 +206,13 @@ def cmd_outreach_draft(args):
         dbpath = c_dir / "outbox.sqlite"
         store.init_db(dbpath)
         count = 0
+        # Prepare connector (fail fast and record connector error for dashboard)
+        try:
+            connector = _mail_connector_for_client(c)
+        except Exception as e:
+            (c_dir / "connector_error.txt").write_text(str(e), encoding="utf-8")
+            print(f"[yellow]Skipping drafts for {c.slug}: {e}")
+            continue
         for cid in plan.get('targets', [])[: int(args.limit)]:
             info = contacts_map.get(cid, {})
             # Guard against pandas NaN values coming from CSV by converting them to None
@@ -210,13 +236,37 @@ def cmd_outreach_draft(args):
                 last_modified=None,
                 score=None,
             )
+            # default render
             subj, body = templates.render(contact, getattr(c, 'brand_voice', None))
+            # If variant templates exist for this client/variant-set, choose and render per-contact
+            variant_set = getattr(args, 'variant_set', 'baseline')
+            try:
+                variant_defs = get_variants_for_set(Path('ada/templates/library'), variant_set)
+            except Exception:
+                variant_defs = []
+            chosen_variant = None
+            if variant_defs:
+                try:
+                    chosen_variant = variants_engine.choose_variant(variant_defs, Path(args.out_root or 'audits'), c.slug, variant_set)
+                    if chosen_variant:
+                        subj, body = templates.render_variant(contact, chosen_variant)
+                except Exception:
+                    chosen_variant = None
+
             # create draft message and save
             try:
-                m = gmail_mail.GmailConnector({**c.__dict__}).draft(subj, body, contact.email or cid)
+                m = connector.draft(subj, body, contact.email or cid)
             except Exception as e:
                 print(f"[red]Failed to draft for {cid}: {e}")
                 continue
+            # annotate message meta with variant info for learning
+            try:
+                if chosen_variant is not None:
+                    m.meta = m.meta or {}
+                    m.meta['variant_id'] = chosen_variant.id
+                    m.meta['variant_set'] = variant_set
+            except Exception:
+                pass
             store.save_message(dbpath, m)
             count += 1
         print(f"[green]{c.slug}: drafted {count} messages")
@@ -232,9 +282,15 @@ def cmd_outreach_approve(args):
             print(f"[yellow]No outbox for {c.slug}")
             continue
         ids = args.id or []
+        # Support CSV via --ids
+        if getattr(args, 'ids', None):
+            ids.extend([s.strip() for s in (args.ids or '').split(',') if s.strip()])
         if args.all:
             rows = store.fetch_pending(dbpath, status="draft", limit=10000)
             ids = [r['id'] for r in rows]
+        # Enforce per-client approval cap
+        cap =  int(getattr(c, 'overrides', {}).get('daily_cap', 25) if getattr(c, 'overrides', None) else 25)
+        ids = ids[:cap]
         for mid in ids:
             store.update_status(dbpath, mid, "approved")
         print(f"[green]{c.slug}: approved {len(ids)} messages")
@@ -251,12 +307,35 @@ def cmd_outreach_send(args):
             continue
         pending = store.fetch_pending(dbpath, status="approved", limit=int(args.max))
         sent = 0
-        for row in pending:
+        # Prepare connector per client
+        try:
+            connector = _mail_connector_for_client(c)
+        except Exception as e:
+            (out_root / c.slug / "connector_error.txt").write_text(str(e), encoding="utf-8")
+            print(f"[yellow]Skipping send for {c.slug}: {e}")
+            continue
+        # Apply per-channel send caps (fallback to daily_cap)
+        cfg = {**c.__dict__}
+        if getattr(c, 'overrides', None):
+            cfg.update(c.overrides)
+        channel = cfg.get('channel', 'gmail')
+        cap = int(cfg.get(f'{channel}_cap', cfg.get('daily_cap', 25)))
+        for row in pending[:cap]:
             msg = schemas.Message(**{k: row[k] for k in row.keys() if k in row})
             try:
-                conn = gmail_mail.GmailConnector({**c.__dict__})
-                updated = conn.send(msg)
+                updated = connector.send(msg)
                 store.save_message(dbpath, updated)
+                # Log a 'sent' event with channel context
+                ev = schemas.Event(
+                    id=f"ev_{int(datetime.utcnow().timestamp()*1000)}",
+                    client_slug=c.slug,
+                    kind="sent",
+                    contact_id=updated.contact_id,
+                    message_id=updated.id,
+                    ts=datetime.utcnow(),
+                    meta={"channel": updated.channel},
+                )
+                store.log_event(dbpath, ev)
                 sent += 1
             except Exception as e:
                 store.update_status(dbpath, msg.id, "failed", {"error": str(e)})
@@ -274,14 +353,14 @@ def cmd_outreach_replies(args):
             print(f"[yellow]No outbox for {c.slug}")
             continue
         try:
-            conn = gmail_mail.GmailConnector({**c.__dict__})
+            conn = _mail_connector_for_client(c)
         except Exception as e:
             print(f"[yellow]Gmail connector not configured for {c.slug}: {e}")
             continue
         replies = conn.list_replies(since)
         cnt = 0
         for r in replies:
-            ev = schemas.Event(id=f"ev_{int(datetime.utcnow().timestamp()*1000)}", client_slug=c.slug, kind="replied", contact_id=r.contact_id, message_id=r.id, ts=datetime.utcnow(), meta={})
+            ev = schemas.Event(id=f"ev_{int(datetime.utcnow().timestamp()*1000)}", client_slug=c.slug, kind="replied", contact_id=r.contact_id, message_id=r.id, ts=datetime.utcnow(), meta={"channel": r.channel})
             store.log_event(out_root / c.slug / "outbox.sqlite", ev)
             cnt += 1
         print(f"[green]{c.slug}: logged {cnt} replies")
@@ -301,10 +380,53 @@ def cmd_outreach_metrics(args):
         p = dbpath
         conn = sqlite3.connect(str(p))
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(DISTINCT contact_id) FROM events")
-        contacted = int(cur.fetchone()[0] or 0)
-        cur.execute("SELECT COUNT(*) FROM events WHERE kind='replied'")
-        replies = int(cur.fetchone()[0] or 0)
+        # by-channel contacted (sent messages)
+        cur.execute("SELECT channel, COUNT(*) FROM messages WHERE status='sent' GROUP BY channel")
+        by_channel_contacted = {row[0]: int(row[1]) for row in cur.fetchall()}
+        # by-channel replies (join with messages)
+        cur.execute("""
+            SELECT m.channel, COUNT(*)
+            FROM events e
+            JOIN messages m ON m.id = e.message_id
+            WHERE e.kind='replied'
+            GROUP BY m.channel
+        """)
+        by_channel_replies = {row[0]: int(row[1]) for row in cur.fetchall()}
+        contacted = sum(by_channel_contacted.values())
+        replies = sum(by_channel_replies.values())
+        # Variant-level rollups: read messages and events and attribute to variant_id in meta
+        cur.execute("SELECT id, meta FROM messages WHERE status='sent'")
+        variant_counters = {}
+        msg_variant = {}
+        for mid, meta_text in cur.fetchall():
+            try:
+                meta = json.loads(meta_text or "{}")
+            except Exception:
+                meta = {}
+            vid = meta.get('variant_id')
+            vset = meta.get('variant_set', 'baseline')
+            key = (vset, vid)
+            msg_variant[mid] = key
+            if vid:
+                variant_counters.setdefault(key, {'variant_set': vset, 'variant_id': vid, 'sent': 0, 'opens': 0, 'replies': 0, 'meetings': 0})
+                variant_counters[key]['sent'] += 1
+
+        # scan events for opens/replies/meetings and attribute by message->variant
+        cur.execute("SELECT kind, message_id FROM events")
+        for kind, mid in cur.fetchall():
+            key = msg_variant.get(mid)
+            if not key:
+                continue
+            counters = variant_counters.get(key)
+            if not counters:
+                continue
+            if kind == 'replied':
+                counters['replies'] += 1
+            elif kind == 'opened':
+                counters['opens'] += 1
+            elif kind in ('meeting', 'booked_meeting'):
+                counters['meetings'] += 1
+
         conn.close()
         metrics = {
             "client_slug": c.slug,
@@ -317,6 +439,11 @@ def cmd_outreach_metrics(args):
             "reply_rate": (replies / contacted) if contacted else 0.0,
             "conversion_rate": 0.0,
             "ts": datetime.utcnow().isoformat(),
+            "contacted_by_channel": by_channel_contacted,
+            "replies_by_channel": by_channel_replies,
+            "meetings_by_channel": {},
+            # variant-level performance
+            "variant_perf": list(variant_counters.values()),
         }
         (out_root / c.slug / "outreach_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
         print(f"[green]{c.slug}: metrics written (contacted={contacted}, replies={replies})")
@@ -330,7 +457,9 @@ def main():
     p2 = sub.add_parser("analyze", help="Analyze contacts CSV → reports")
     p2.add_argument("--source", choices=["csv"], default="csv")
     p2.add_argument("--path", required=True)
-    p2.add_argument("--out-dir", default="reports"); p2.set_defaults(func=cmd_analyze)
+    p2.add_argument("--out-dir", default="reports")
+    p2.add_argument("--pure-html", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
+    p2.set_defaults(func=cmd_analyze)
     p3 = sub.add_parser("audit", help="Consultant Mode: multi-client batch audits")
     scope = p3.add_mutually_exclusive_group(required=True)
     scope.add_argument("--client", help="Client slug to audit (e.g., acme_corp)")
@@ -339,6 +468,7 @@ def main():
     p3.add_argument("--limit", default="5000", help="Contact limit per client")
     p3.add_argument("--out-root", default="audits", help="Root directory for per-client outputs")
     p3.add_argument("--skip-pull", action="store_true", help="Skip HubSpot pull and reuse existing contacts.csv")
+    p3.add_argument("--pure-html", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
     p3.set_defaults(func=cmd_audit)
     # Outreach subcommands (Universal AI Closer Phase 1)
     p_out = sub.add_parser("outreach", help="Outreach workflow: plan, draft, approve, send, replies, metrics")
@@ -356,6 +486,7 @@ def main():
     pdraft.add_argument("--all", action="store_true")
     pdraft.add_argument("--config", required=True)
     pdraft.add_argument("--limit", default="50")
+    pdraft.add_argument("--variant-set", default="baseline", help="Variant set to use for A/B testing")
     pdraft.add_argument("--out-root", default="audits")
     pdraft.set_defaults(func=cmd_outreach_draft)
 
@@ -364,6 +495,7 @@ def main():
     papprove.add_argument("--all", action="store_true")
     papprove.add_argument("--config", required=True)
     papprove.add_argument("--id", action="append")
+    papprove.add_argument("--ids", help="CSV of message IDs to approve")
     papprove.add_argument("--out-root", default="audits")
     papprove.set_defaults(func=cmd_outreach_approve)
 

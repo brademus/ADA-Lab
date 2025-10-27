@@ -46,6 +46,20 @@ def init_db(dbpath: Path) -> None:
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS variant_stats (
+            variant_set TEXT,
+            variant_id TEXT,
+            sent INTEGER DEFAULT 0,
+            opens INTEGER DEFAULT 0,
+            replies INTEGER DEFAULT 0,
+            meetings INTEGER DEFAULT 0,
+            last_updated TEXT,
+            PRIMARY KEY(variant_set, variant_id)
+        )
+        """
+    )
     conn.commit(); conn.close()
 
 
@@ -92,6 +106,50 @@ def log_event(dbpath: Path, ev: schemas.Event) -> None:
         (ev.id, ev.client_slug, ev.kind, ev.message_id, ev.contact_id, ev.ts.isoformat(), json.dumps(ev.meta)),
     )
     conn.commit(); conn.close()
+    # Update variant stats if the message carried a variant_id in its meta
+    try:
+        if ev.message_id:
+            _update_variant_from_message(dbpath, ev.message_id, ev.kind)
+    except Exception:
+        # non-fatal: best-effort stats update
+        pass
+
+
+def _update_variant_from_message(dbpath: Path, message_id: str, kind: str) -> None:
+    """Helper: find message by id, parse meta for variant_id/variant_set and increment variant_stats accordingly."""
+    init_db(dbpath)
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    cur.execute("SELECT meta FROM messages WHERE id=?", (message_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return
+    try:
+        meta = json.loads(row[0] or "{}")
+    except Exception:
+        meta = {}
+    variant_id = meta.get("variant_id")
+    variant_set = meta.get("variant_set", "baseline")
+    if not variant_id:
+        conn.close()
+        return
+    now = datetime.utcnow().isoformat()
+    # ensure row
+    cur.execute("INSERT OR IGNORE INTO variant_stats(variant_set, variant_id, last_updated) VALUES (?, ?, ?)", (variant_set, variant_id, now))
+    col = None
+    if kind == "sent":
+        col = "sent"
+    elif kind in ("opened", "open"):
+        col = "opens"
+    elif kind in ("replied", "reply"):
+        col = "replies"
+    elif kind in ("meeting", "booked_meeting"):
+        col = "meetings"
+    if col:
+        cur.execute(f"UPDATE variant_stats SET {col} = COALESCE({col},0) + 1, last_updated = ? WHERE variant_set=? AND variant_id=?", (now, variant_set, variant_id))
+        conn.commit()
+    conn.close()
 
 
 def fetch_pending(dbpath: Path, status: str = "approved", limit: int = 100) -> List[Dict]:
