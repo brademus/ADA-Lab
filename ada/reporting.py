@@ -81,6 +81,18 @@ def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
         "owner_imbalance_pct": _owner_imbalance_pct(df),
         "ts_utc": datetime.now(timezone.utc).isoformat(),
     }
+    # Merge outreach metrics if present
+    try:
+        outreach_file = out / "outreach_metrics.json"
+        if outreach_file.exists():
+            outreach = json.loads(outreach_file.read_text(encoding="utf-8"))
+            # copy known fields into summary
+            for k in ("contacted", "replies", "meetings", "open_rate", "reply_rate", "conversion_rate"):
+                if k in outreach:
+                    summary_json[k] = outreach[k]
+    except Exception:
+        # non-fatal
+        pass
     (out / "summary.json").write_text(json.dumps(summary_json, indent=2), encoding="utf-8")
 
     # Also emit an HTML version of the summary for nicer in-browser viewing.

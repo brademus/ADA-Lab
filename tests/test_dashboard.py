@@ -46,5 +46,3 @@ def test_collect_metrics_and_render(tmp_path):
     assert 'Alpha Co' in txt
     assert 'Beta LLC' in txt
     assert 'alpha/summary.md' in txt or 'alpha/summary.html' in txt
-
-*** End Patch

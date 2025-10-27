@@ -79,6 +79,12 @@ jobs:
         run: |
           python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
 
+      - name: Run outreach plan + draft (no send)
+        run: |
+          # Phase 1: build plans and draft messages for human approval (no auto-send)
+          python cli.py outreach plan --all --config clients.toml --limit 500
+          python cli.py outreach draft --all --config clients.toml --limit 50
+
       - name: Validate audits output
         run: |
           python -m ada.ci_validate audits

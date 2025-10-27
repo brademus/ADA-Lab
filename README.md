@@ -50,6 +50,33 @@ python cli.py audit --all --config clients.toml --limit 5000 --out-root audits
 
 Artifacts: the workflow uploads `audits/**` as the `ada-audits` artifact.
 
+## Universal AI Closer (Phase 1)
+
+This release adds a minimal outreach loop for Gmail with human approval required before sending. Key features:
+
+- Per-client outreach config fields in `clients.toml` (example fields: `channel = "gmail"`, `daily_cap`, `quiet_hours`, `brand_voice`, `gmail_user`, `gmail_refresh_token`, `gmail_client_id`, `gmail_client_secret`).
+- New CLI group `outreach` with subcommands: `plan`, `draft`, `approve`, `send`, `replies`, `metrics`.
+- Drafts and outbox persisted in `audits/<slug>/outbox.sqlite` (uploads to CI artifact). Drafting runs in CI but sending is disabled by default.
+- Metrics are stored in `audits/<slug>/outreach_metrics.json` and merged into `summary.json` and the master dashboard.
+
+Safety: this Phase 1 requires manual approval before any message is sent. CI runs `outreach plan` and `outreach draft` to produce artifacts for reviewers.
+
+Example: build plans and draft messages locally:
+
+```bash
+python cli.py outreach plan --client acme_corp --config clients.toml --limit 200
+python cli.py outreach draft --client acme_corp --config clients.toml --limit 50
+```
+
+To approve and send (requires Gmail creds in `clients.toml`):
+
+```bash
+python cli.py outreach approve --client acme_corp --config clients.toml --id <message-id>
+python cli.py outreach send --client acme_corp --config clients.toml --max 25
+```
+
+See `CONTRIBUTING.md` for notes on secrets and CI.
+
 ## Notes
 -- `clients.toml` is intentionally ignored in `.gitignore` for local usage — CI must supply it via `CLIENTS_TOML_B64`.
 - If a client audit fails, the run continues for other clients and the error is written to `audits/<slug>/error.txt`; the dashboard will mark that client as FAILED.
