@@ -33,7 +33,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          pytest -q
+          PYTHONPATH=. pytest -q
 
       - name: Validate HUBSPOT_TOKEN
         # Run a quick HubSpot call to fail fast if the token is missing or
