@@ -94,6 +94,9 @@ def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
             for k in ("contacted_by_channel", "replies_by_channel", "meetings_by_channel"):
                 if k in outreach:
                     summary_json[k] = outreach[k]
+            # variant performance
+            if "variant_perf" in outreach:
+                summary_json["variant_perf"] = outreach["variant_perf"]
     except Exception:
         # non-fatal
         pass

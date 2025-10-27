@@ -100,7 +100,7 @@ jobs:
       - name: Run batch audits
         run: |
           # Default to a conservative limit on push/schedule; allow override via workflow_dispatch inputs
-          python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 200 }} --out-root audits
+          python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
 
       - name: Run outreach plan + draft (no send)
         run: |

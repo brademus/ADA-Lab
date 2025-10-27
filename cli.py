@@ -12,6 +12,8 @@ from ada.core import schemas
 from ada.connectors import hubspot_contacts, gmail_mail
 from ada.connectors.outlook_mail import OutlookConnector
 from ada.orchestrator import policy, templates
+from ada.learning import variants as variants_engine
+from ada.templates.library import get_variants_for_set
 from ada.store import sqlite as store
 from datetime import datetime, timedelta
 import json
@@ -234,13 +236,37 @@ def cmd_outreach_draft(args):
                 last_modified=None,
                 score=None,
             )
+            # default render
             subj, body = templates.render(contact, getattr(c, 'brand_voice', None))
+            # If variant templates exist for this client/variant-set, choose and render per-contact
+            variant_set = getattr(args, 'variant_set', 'baseline')
+            try:
+                variant_defs = get_variants_for_set(Path('ada/templates/library'), variant_set)
+            except Exception:
+                variant_defs = []
+            chosen_variant = None
+            if variant_defs:
+                try:
+                    chosen_variant = variants_engine.choose_variant(variant_defs, Path(args.out_root or 'audits'), c.slug, variant_set)
+                    if chosen_variant:
+                        subj, body = templates.render_variant(contact, chosen_variant)
+                except Exception:
+                    chosen_variant = None
+
             # create draft message and save
             try:
                 m = connector.draft(subj, body, contact.email or cid)
             except Exception as e:
                 print(f"[red]Failed to draft for {cid}: {e}")
                 continue
+            # annotate message meta with variant info for learning
+            try:
+                if chosen_variant is not None:
+                    m.meta = m.meta or {}
+                    m.meta['variant_id'] = chosen_variant.id
+                    m.meta['variant_set'] = variant_set
+            except Exception:
+                pass
             store.save_message(dbpath, m)
             count += 1
         print(f"[green]{c.slug}: drafted {count} messages")
@@ -368,6 +394,39 @@ def cmd_outreach_metrics(args):
         by_channel_replies = {row[0]: int(row[1]) for row in cur.fetchall()}
         contacted = sum(by_channel_contacted.values())
         replies = sum(by_channel_replies.values())
+        # Variant-level rollups: read messages and events and attribute to variant_id in meta
+        cur.execute("SELECT id, meta FROM messages WHERE status='sent'")
+        variant_counters = {}
+        msg_variant = {}
+        for mid, meta_text in cur.fetchall():
+            try:
+                meta = json.loads(meta_text or "{}")
+            except Exception:
+                meta = {}
+            vid = meta.get('variant_id')
+            vset = meta.get('variant_set', 'baseline')
+            key = (vset, vid)
+            msg_variant[mid] = key
+            if vid:
+                variant_counters.setdefault(key, {'variant_set': vset, 'variant_id': vid, 'sent': 0, 'opens': 0, 'replies': 0, 'meetings': 0})
+                variant_counters[key]['sent'] += 1
+
+        # scan events for opens/replies/meetings and attribute by message->variant
+        cur.execute("SELECT kind, message_id FROM events")
+        for kind, mid in cur.fetchall():
+            key = msg_variant.get(mid)
+            if not key:
+                continue
+            counters = variant_counters.get(key)
+            if not counters:
+                continue
+            if kind == 'replied':
+                counters['replies'] += 1
+            elif kind == 'opened':
+                counters['opens'] += 1
+            elif kind in ('meeting', 'booked_meeting'):
+                counters['meetings'] += 1
+
         conn.close()
         metrics = {
             "client_slug": c.slug,
@@ -383,6 +442,8 @@ def cmd_outreach_metrics(args):
             "contacted_by_channel": by_channel_contacted,
             "replies_by_channel": by_channel_replies,
             "meetings_by_channel": {},
+            # variant-level performance
+            "variant_perf": list(variant_counters.values()),
         }
         (out_root / c.slug / "outreach_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
         print(f"[green]{c.slug}: metrics written (contacted={contacted}, replies={replies})")
@@ -422,6 +483,7 @@ def main():
     pdraft.add_argument("--all", action="store_true")
     pdraft.add_argument("--config", required=True)
     pdraft.add_argument("--limit", default="50")
+    pdraft.add_argument("--variant-set", default="baseline", help="Variant set to use for A/B testing")
     pdraft.add_argument("--out-root", default="audits")
     pdraft.set_defaults(func=cmd_outreach_draft)
 

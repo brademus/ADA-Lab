@@ -4,3 +4,4 @@ tenacity
 rich
 pandas
 tabulate
+pyyaml
