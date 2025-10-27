@@ -93,9 +93,15 @@ jobs:
         run: |
           python -m ada.ci_validate audits
 
+      - name: Prepare artifact folder
+        run: |
+          rm -rf artifact
+          mkdir -p artifact
+          cp -R audits artifact/
+
       - name: Upload audits artifact
         uses: actions/upload-artifact@v4
         with:
           name: ada-audits
-          # Upload the whole audits directory so artifact preserves 'audits/' prefix
-          path: audits
+          # Upload the top-level artifact directory which contains 'audits/'
+          path: artifact
