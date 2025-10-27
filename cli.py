@@ -179,6 +179,9 @@ def cmd_outreach_draft(args):
         if csvp.exists():
             import pandas as pd
             df = pd.read_csv(csvp)
+            # Replace NaN with None so Pydantic Optional[str]/float fields validate
+            # correctly when we construct schema models from CSV rows.
+            df = df.where(pd.notnull(df), None)
             for _, r in df.iterrows():
                 contacts_map[str(r.get('id'))] = r.to_dict()
         dbpath = c_dir / "outbox.sqlite"
