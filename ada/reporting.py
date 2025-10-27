@@ -4,6 +4,10 @@ import json
 from datetime import datetime, timezone
 import pandas as pd
 from tabulate import tabulate
+try:
+    import markdown as _markdown
+except Exception:
+    _markdown = None
 
 def _percentile(s: pd.Series, q: float) -> float:
     try:
@@ -78,3 +82,17 @@ def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
         "ts_utc": datetime.now(timezone.utc).isoformat(),
     }
     (out / "summary.json").write_text(json.dumps(summary_json, indent=2), encoding="utf-8")
+
+    # Also emit an HTML version of the summary for nicer in-browser viewing.
+    try:
+        if _markdown is not None:
+            md = "\n".join(summary_md)
+            html = _markdown.markdown(md)
+            html_page = f"<html><head><meta charset=\"utf-8\"></head><body>{html}</body></html>"
+            (out / "summary.html").write_text(html_page, encoding="utf-8")
+        else:
+            # Fallback: wrap the markdown in <pre>
+            (out / "summary.html").write_text("<html><body><pre>" + "\n".join(summary_md) + "</pre></body></html>", encoding="utf-8")
+    except Exception:
+        # non-fatal
+        pass

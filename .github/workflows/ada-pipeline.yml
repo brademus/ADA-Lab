@@ -29,7 +29,11 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install httpx pydantic tenacity rich pandas tabulate pyyaml
+          pip install httpx pydantic tenacity rich pandas tabulate pyyaml markdown pytest
+
+      - name: Run unit tests
+        run: |
+          pytest -q
 
       - name: Validate HUBSPOT_TOKEN
         # Run a quick HubSpot call to fail fast if the token is missing or
@@ -74,6 +78,10 @@ jobs:
       - name: Run batch audits
         run: |
           python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
+
+      - name: Validate audits output
+        run: |
+          python -m ada.ci_validate audits
 
       - name: Upload audits artifact
         uses: actions/upload-artifact@v4
