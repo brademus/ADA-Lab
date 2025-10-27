@@ -3,10 +3,26 @@ name: ADA Pipeline
 on:
   workflow_dispatch:
     inputs:
+      client:
+        description: Target client slug (optional)
+        required: false
+        default: ""
       limit:
         description: Contact limit
         required: false
-        default: "2000"
+        default: "5000"
+      APPROVE_IDS:
+        description: CSV of message ids to approve (optional)
+        required: false
+        default: ""
+      SEND_NOW:
+        description: 'Set to 1 to send approved messages'
+        required: false
+        default: "0"
+      REPLIES_SINCE:
+        description: 'Ingest replies since (days), e.g., 7'
+        required: false
+        default: ""
   push:
     branches:
       - main
@@ -93,15 +109,25 @@ jobs:
         run: |
           python -m ada.ci_validate audits
 
-      - name: Prepare artifact folder
+      # Conditional outreach gates for manual dispatches
+      - name: Approve drafted messages
+        if: ${{ inputs.APPROVE_IDS != '' }}
         run: |
-          rm -rf artifact
-          mkdir -p artifact
-          cp -R audits artifact/
+          python cli.py outreach approve --client "${{ inputs.client }}" --id ${{ inputs.APPROVE_IDS }}
+
+      - name: Send approved messages
+        if: ${{ inputs.SEND_NOW == '1' }}
+        run: |
+          python cli.py outreach send --client "${{ inputs.client }}" --max 25
+
+      - name: Ingest replies and compute metrics
+        if: ${{ inputs.REPLIES_SINCE != '' }}
+        run: |
+          python cli.py outreach replies --client "${{ inputs.client }}" --since-days "${{ inputs.REPLIES_SINCE }}"
+          python cli.py outreach metrics --client "${{ inputs.client }}"
 
       - name: Upload audits artifact
         uses: actions/upload-artifact@v4
         with:
           name: ada-audits
-          # Upload the top-level artifact directory which contains 'audits/'
-          path: artifact
+          path: audits/**
