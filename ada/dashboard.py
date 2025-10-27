@@ -2,22 +2,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Any
 import json
-import pandas as pd
 from .clients import ClientConfig
 
 def collect_metrics(client_dir: Path) -> Dict[str, Any]:
-    """
-    Read summary.json; fallback to CSV if missing.
-    Returns keys: mean_quality, dormant_pct, owner_imbalance_pct, last_audited, summary_href.
-    """
-    summary_json = client_dir / "summary.json"
-    summary_md = client_dir / "summary.md"
-    summary_html = client_dir / "summary.html"
-    lead_csv = client_dir / "lead_scores.csv"
-    insights = {
-        "mean_quality": 0.0,
-        "dormant_pct": 0.0,
-        "owner_imbalance_pct": 0.0,
+  """
+  Read summary.json; fallback to CSV if missing.
+  Returns keys: mean_quality, dormant_pct, owner_imbalance_pct, last_audited, summary_href.
+  """
+  summary_json = client_dir / "summary.json"
+  summary_md = client_dir / "summary.md"
+  summary_html = client_dir / "summary.html"
+  lead_csv = client_dir / "lead_scores.csv"
+  insights: Dict[str, Any] = {
+    "mean_quality": 0.0,
+    "dormant_pct": 0.0,
+    "owner_imbalance_pct": 0.0,
     "last_audited": "",
     "summary_href": "summary.html" if summary_html.exists() else ("summary.md" if summary_md.exists() else ""),
     "contacted": 0,
@@ -25,30 +24,37 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
     "meetings": 0,
     "reply_rate": 0.0,
     "outbox_link": "outbox.sqlite" if (client_dir / "outbox.sqlite").exists() else "",
-    }
-    if summary_json.exists():
-        try:
-            data = json.loads(summary_json.read_text(encoding="utf-8"))
-            insights["mean_quality"] = float(data.get("mean_quality", 0.0))
-            insights["dormant_pct"] = float(data.get("dormant_pct", 0.0))
-            insights["owner_imbalance_pct"] = float(data.get("owner_imbalance_pct", 0.0))
-            insights["last_audited"] = str(data.get("ts_utc", ""))
-            # outreach merge
-            insights["contacted"] = int(data.get("contacted", 0))
-            insights["replies"] = int(data.get("replies", 0))
-            insights["meetings"] = int(data.get("meetings", 0))
-            insights["reply_rate"] = float(data.get("reply_rate", 0.0))
-            return insights
-        except Exception:
-            pass
-    if lead_csv.exists():
-        try:
-            df = pd.read_csv(lead_csv)
-            if "lead_score" in df.columns:
-                insights["mean_quality"] = float(round(df["lead_score"].mean(), 2))
-        except Exception:
-            pass
-    return insights
+    # new per-channel splits for UI
+    "contacted_by_channel": {},
+    "replies_by_channel": {},
+  }
+  if summary_json.exists():
+    try:
+      data = json.loads(summary_json.read_text(encoding="utf-8"))
+      insights["mean_quality"] = float(data.get("mean_quality", 0.0))
+      insights["dormant_pct"] = float(data.get("dormant_pct", 0.0))
+      insights["owner_imbalance_pct"] = float(data.get("owner_imbalance_pct", 0.0))
+      insights["last_audited"] = str(data.get("ts_utc", ""))
+      # outreach merge
+      insights["contacted"] = int(data.get("contacted", 0))
+      insights["replies"] = int(data.get("replies", 0))
+      insights["meetings"] = int(data.get("meetings", 0))
+      insights["reply_rate"] = float(data.get("reply_rate", 0.0))
+      insights["contacted_by_channel"] = data.get("contacted_by_channel", {})
+      insights["replies_by_channel"] = data.get("replies_by_channel", {})
+      return insights
+    except Exception:
+      pass
+  if lead_csv.exists():
+    try:
+      import pandas as pd  # type: ignore
+      df = pd.read_csv(lead_csv)
+      if "lead_score" in df.columns:
+        insights["mean_quality"] = float(round(df["lead_score"].mean(), 2))
+    except Exception:
+      # Non-fatal if pandas isn't available in this runtime
+      pass
+  return insights
 
 def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path: Path) -> None:
     """Generate audits/index.html with a clean table per client and link to summary."""
@@ -58,21 +64,38 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
         m = collect_metrics(cdir)
         link = m.get("summary_href") or ""
         link_html = f'<a href="{c.slug}/{link}">Open</a>' if link else "—"
+
         failed = (cdir / "error.txt").exists()
-        status = "FAILED" if failed else ""
-        status_html = f'<span style="color:red;font-weight:600">{status}</span>' if status else ""
+        conn_err = (cdir / "connector_error.txt").exists()
+        status_txt = "FAILED" if failed or conn_err else ""
+        title_attr = ""
+        if conn_err:
+            try:
+                tip = (cdir / "connector_error.txt").read_text(encoding="utf-8").strip().splitlines()[0]
+                title_attr = f' title="{tip}"'
+            except Exception:
+                title_attr = ''
+        status_html = f'<span style="color:red;font-weight:600"{title_attr}>{status_txt}</span>' if status_txt else ""
+
+        # Channel splits formatting
+        def fmt_split(d: Dict[str, Any]) -> str:
+            try:
+                return ", ".join(f"{k}:{int(v)}" for k, v in d.items()) if d else "—"
+            except Exception:
+                return "—"
+
         rows.append(
-          "<tr>"
-          f"<td>{c.name} <small>({c.slug})</small> {status_html}</td>"
-          f"<td>{m.get('last_audited','')}</td>"
-          f"<td>{m.get('mean_quality',0.0):.2f}</td>"
-          f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
-          f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
-          f"<td>{m.get('contacted',0)}</td>"
-          f"<td>{m.get('replies',0)}</td>"
-          f"<td>{m.get('reply_rate',0.0):.2f}</td>"
-          f"<td>{link_html}</td>"
-          "</tr>"
+            "<tr>"
+            f"<td>{c.name} <small>({c.slug})</small> {status_html}</td>"
+            f"<td>{m.get('last_audited','')}</td>"
+            f"<td>{m.get('mean_quality',0.0):.2f}</td>"
+            f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
+            f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
+            f"<td>{fmt_split(m.get('contacted_by_channel',{}))}</td>"
+            f"<td>{fmt_split(m.get('replies_by_channel',{}))}</td>"
+            f"<td>{m.get('reply_rate',0.0):.2f}</td>"
+            f"<td>{link_html}</td>"
+            "</tr>"
         )
     html = f"""<!doctype html>
 <html>
@@ -100,14 +123,14 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
         <th>Avg Quality</th>
         <th>% Dormant</th>
         <th>Owner Load</th>
-        <th>Contacted</th>
-        <th>Replies</th>
+    <th>Contacted</th>
+    <th>Replies</th>
         <th>Reply Rate</th>
         <th>Report</th>
       </tr>
     </thead>
     <tbody>
-      {''.join(rows) if rows else '<tr><td colspan="6">No audits yet.</td></tr>'}
+  {''.join(rows) if rows else '<tr><td colspan="9">No audits yet.</td></tr>'}
     </tbody>
   </table>
 </body>

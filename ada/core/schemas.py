@@ -74,6 +74,7 @@ class OutreachPlan(BaseModel):
     targets: List[str] = Field(default_factory=list)
     daily_cap: int = 25
     variant: Optional[str]
+    reasons_by_contact: Dict[str, str] = Field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return self.dict()
