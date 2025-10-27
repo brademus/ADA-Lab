@@ -36,7 +36,7 @@ def _dormant_mask(df: pd.DataFrame, days: int = 180) -> pd.Series:
     cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)
     return ts.isna() | (ts < cutoff)
 
-def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
+def write_outputs(df: pd.DataFrame, out_dir: str = "reports", *, pure_html: bool = False):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -104,14 +104,31 @@ def write_outputs(df: pd.DataFrame, out_dir: str = "reports"):
 
     # Also emit an HTML version of the summary for nicer in-browser viewing.
     try:
-        if _markdown is not None:
-            md = "\n".join(summary_md)
-            html = _markdown.markdown(md)
-            html_page = f"<html><head><meta charset=\"utf-8\"></head><body>{html}</body></html>"
+        if pure_html:
+            # Build a small, dependency-free HTML page.
+            table_html = tabulate(top.head(10).fillna(""), headers="keys", tablefmt="html")
+            html_page = (
+                "<html><head><meta charset=\"utf-8\"><title>ADA Summary</title>"
+                "<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:32px}"
+                "table{border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px}</style>"
+                "</head><body>"
+                f"<h1>ADA Analysis Summary</h1>"
+                f"<p>Total contacts: <strong>{len(df)}</strong></p>"
+                + (f"<p>Avg lead score: <strong>{round(float(df['lead_score'].mean()),2)}</strong></p>" if "lead_score" in df.columns else "<p>Avg lead score: N/A</p>")
+                + "<h2>Top 10 Contacts</h2>"
+                + table_html
+                + "</body></html>"
+            )
             (out / "summary.html").write_text(html_page, encoding="utf-8")
         else:
-            # Fallback: wrap the markdown in <pre>
-            (out / "summary.html").write_text("<html><body><pre>" + "\n".join(summary_md) + "</pre></body></html>", encoding="utf-8")
+            if _markdown is not None:
+                md = "\n".join(summary_md)
+                html = _markdown.markdown(md)
+                html_page = f"<html><head><meta charset=\"utf-8\"></head><body>{html}</body></html>"
+                (out / "summary.html").write_text(html_page, encoding="utf-8")
+            else:
+                # Fallback: wrap the markdown in <pre>
+                (out / "summary.html").write_text("<html><body><pre>" + "\n".join(summary_md) + "</pre></body></html>", encoding="utf-8")
     except Exception:
         # non-fatal
         pass
