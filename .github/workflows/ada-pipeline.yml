@@ -80,7 +80,8 @@ jobs:
 
       - name: Run batch audits
         run: |
-          python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
+          # Default to a conservative limit on push/schedule; allow override via workflow_dispatch inputs
+          python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 200 }} --out-root audits
 
       - name: Run outreach plan + draft (no send)
         run: |
@@ -96,4 +97,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ada-audits
-          path: audits/**
+          # Upload the whole audits directory so artifact preserves 'audits/' prefix
+          path: audits
