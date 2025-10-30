@@ -3,6 +3,7 @@
 __pycache__/
 .pythonlibs/
 *.db
+*.pyc
 
 # reports and artifacts (CI uploads these)
 reports/
