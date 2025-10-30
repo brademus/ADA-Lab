@@ -1,0 +1,10 @@
+pytest
+rich
+pandas
+pydantic
+httpx
+tenacity
+tabulate
+pyyaml
+markdown
+msal

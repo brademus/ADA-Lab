@@ -1,9 +1,10 @@
 # env & caches
 .env
 __pycache__/
+*.pyc
 .pythonlibs/
 *.db
-*.pyc
+.venv/
 
 # reports and artifacts (CI uploads these)
 reports/

@@ -120,8 +120,8 @@ jobs:
           # Skip when token or clients.toml are missing
           if [ -z "$HUBSPOT_TOKEN" ]; then echo "No HUBSPOT_TOKEN; skipping audits"; exit 0; fi
           if [ ! -s clients.toml ]; then echo "No clients.toml; skipping audits"; exit 0; fi
-          # Default to a conservative limit on push/schedule; allow override via workflow_dispatch inputs
-          python cli.py audit --all --config clients.toml --limit "${LIMIT:-5000}" --out-root audits
+          # Default limit 200 on push/PR/cron; override via workflow_dispatch inputs when provided
+          python cli.py audit --all --config clients.toml --limit "${LIMIT:-200}" --out-root audits
 
       - name: Run outreach plan + draft (no send)
         run: |
