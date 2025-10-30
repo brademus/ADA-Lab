@@ -62,6 +62,7 @@ jobs:
           PYTHONPATH=. pytest -q
 
       - name: Validate HUBSPOT_TOKEN
+        if: ${{ env.HUBSPOT_TOKEN != '' }}
         # Run a quick HubSpot call to fail fast if the token is missing or
         # doesn't have the expected scopes. This helps give clearer CI
         # failure messages instead of opaque HTTP 400/401 later in the run.
@@ -78,6 +79,7 @@ jobs:
           PY
 
       - name: Check HubSpot contacts access
+        if: ${{ env.HUBSPOT_TOKEN != '' }}
         # Attempt a minimal GET to the v3 contacts listing endpoint and
         # print the status and body. If this returns 400/403 it indicates
         # the token is missing required scopes or the portal restricts
@@ -97,22 +99,26 @@ jobs:
           fi
 
       - name: Write clients.toml
+        if: ${{ secrets.CLIENTS_TOML_B64 != '' }}
         run: |
           echo "${{ secrets.CLIENTS_TOML_B64 }}" | base64 -d > clients.toml
           test -s clients.toml || (echo "clients.toml empty" && exit 2)
 
       - name: Run batch audits
+        if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
         run: |
           # Default to a conservative limit on push/schedule; allow override via workflow_dispatch inputs
           python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
 
       - name: Run outreach plan + draft (no send)
+        if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
         run: |
           # Phase 1: build plans and draft messages for human approval (no auto-send)
           python cli.py outreach plan --all --config clients.toml --limit 500
           python cli.py outreach draft --all --config clients.toml --limit 50
 
       - name: Validate audits output
+        if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
         run: |
           python -m ada.ci_validate audits
 
@@ -137,7 +143,12 @@ jobs:
           python cli.py outreach metrics --client "${{ inputs.client }}" --out-root audits
 
       - name: Upload audits artifact
+        if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: ada-audits
           path: audits/**
+
+      - name: Skipped audits note (no secrets)
+        if: ${{ !(env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '') }}
+        run: echo "Secrets not available; running unit tests only and skipping audits/outreach/artifact upload."
