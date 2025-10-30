@@ -33,15 +33,31 @@ After a run, per-client outputs appear in `audits/<slug>/` and a master dashboar
 ### HTML output mode
 
 By default, `summary.html` is produced by converting Markdown to HTML (using the `markdown` package).
-If you prefer a dependency-free HTML page, pass the `--pure-html` flag to either `analyze` or `audit`:
+If you prefer a dependency-free HTML page, pass the `--html-only` flag (or legacy alias `--pure-html`) to either `analyze` or `audit`:
 
 ```bash
 # Analyze a CSV and write a pure-HTML summary (no markdown conversion)
-python cli.py analyze --source csv --path contacts.csv --out-dir reports --pure-html
+python cli.py analyze --source csv --path contacts.csv --out-dir reports --html-only
 
 # Batch audit clients with pure-HTML summaries
-python cli.py audit --all --config clients.toml --limit 5000 --out-root audits --pure-html
+python cli.py audit --all --config clients.toml --limit 5000 --out-root audits --html-only
 ```
+
+## Tests and dev ergonomics
+
+- Run tests locally:
+
+```bash
+make test
+```
+
+- Quick smoke (local-only):
+
+```bash
+make smoke
+```
+
+Synthetic summary fixtures for dashboard tests live under `ada/tests/fixtures/`.
 
 ## CI integration
 

@@ -60,7 +60,8 @@ def _analyze_csv(csv_path: Path, out_dir: Path, *, pure_html: bool = False) -> N
 def cmd_analyze(args):
     if args.source != "csv":
         raise SystemExit("Only --source csv is currently supported.")
-    _analyze_csv(Path(args.path), Path(args.out_dir), pure_html=bool(args.pure_html))
+    pure = bool(getattr(args, 'pure_html', False) or getattr(args, 'html_only', False))
+    _analyze_csv(Path(args.path), Path(args.out_dir), pure_html=pure)
 
 def _run_audit_for_client(c: ClientConfig, limit: int, out_root: Path, skip_pull: bool, *, pure_html: bool = False) -> None:
     c_dir = out_root / c.slug
@@ -131,7 +132,8 @@ def cmd_audit(args):
     targets = clients if args.all else [get_client(clients, args.client)]
     for c in targets:
         print(f"[bold]Auditing: {c.name} ({c.slug})[/bold]")
-        _run_audit_for_client(c, limit=int(args.limit), out_root=out_root, skip_pull=bool(args.skip_pull), pure_html=bool(args.pure_html))
+        pure = bool(getattr(args, 'pure_html', False) or getattr(args, 'html_only', False))
+        _run_audit_for_client(c, limit=int(args.limit), out_root=out_root, skip_pull=bool(args.skip_pull), pure_html=pure)
     if args.all:
         render_master_index(clients, out_root, out_root / "index.html")
         print(f"[green]Master dashboard written → {out_root / 'index.html'}")
@@ -458,7 +460,8 @@ def main():
     p2.add_argument("--source", choices=["csv"], default="csv")
     p2.add_argument("--path", required=True)
     p2.add_argument("--out-dir", default="reports")
-    p2.add_argument("--pure-html", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
+    p2.add_argument("--pure-html", action="store_true", help="Deprecated alias; use --html-only")
+    p2.add_argument("--html-only", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
     p2.set_defaults(func=cmd_analyze)
     p3 = sub.add_parser("audit", help="Consultant Mode: multi-client batch audits")
     scope = p3.add_mutually_exclusive_group(required=True)
@@ -468,7 +471,8 @@ def main():
     p3.add_argument("--limit", default="5000", help="Contact limit per client")
     p3.add_argument("--out-root", default="audits", help="Root directory for per-client outputs")
     p3.add_argument("--skip-pull", action="store_true", help="Skip HubSpot pull and reuse existing contacts.csv")
-    p3.add_argument("--pure-html", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
+    p3.add_argument("--pure-html", action="store_true", help="Deprecated alias; use --html-only")
+    p3.add_argument("--html-only", action="store_true", help="Write summary.html using a pure-HTML fallback (no markdown conversion)")
     p3.set_defaults(func=cmd_audit)
     # Outreach subcommands (Universal AI Closer Phase 1)
     p_out = sub.add_parser("outreach", help="Outreach workflow: plan, draft, approve, send, replies, metrics")

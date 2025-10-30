@@ -47,6 +47,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -55,6 +56,9 @@ jobs:
 
       - name: Run unit tests
         run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt || true
+          pip install pytest rich pandas pydantic httpx tenacity tabulate
           PYTHONPATH=. pytest -q
 
       - name: Validate HUBSPOT_TOKEN
