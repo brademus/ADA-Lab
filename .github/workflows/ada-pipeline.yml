@@ -54,6 +54,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install httpx pydantic tenacity rich pandas tabulate pyyaml markdown pytest msal
 
+      - name: Set LIMIT from workflow_dispatch input
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.limit != '' }}
+        run: echo "LIMIT=${{ inputs.limit }}" >> $GITHUB_ENV
+
       - name: Run unit tests
         run: |
           python -m pip install -U pip
@@ -108,7 +112,7 @@ jobs:
         if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
         run: |
           # Default to a conservative limit on push/schedule; allow override via workflow_dispatch inputs
-          python cli.py audit --all --config clients.toml --limit ${{ inputs.limit || 5000 }} --out-root audits
+          python cli.py audit --all --config clients.toml --limit "${LIMIT:-5000}" --out-root audits
 
       - name: Run outreach plan + draft (no send)
         if: ${{ env.HUBSPOT_TOKEN != '' && secrets.CLIENTS_TOML_B64 != '' }}
@@ -124,7 +128,7 @@ jobs:
 
       # Conditional outreach gates
       - name: Approve drafted messages (gated)
-        if: ${{ inputs.APPROVE_IDS != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.APPROVE_IDS != '' }}
         run: |
           IFS=',' read -ra IDS <<< "${{ inputs.APPROVE_IDS }}"
           ARGS=""
@@ -132,12 +136,12 @@ jobs:
           python cli.py outreach approve --client "${{ inputs.client }}" $ARGS --out-root audits
 
       - name: Send approved messages (gated)
-        if: ${{ inputs.SEND_NOW == '1' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.SEND_NOW == '1' }}
         run: |
           python cli.py outreach send --client "${{ inputs.client }}" --max 25 --out-root audits
 
       - name: Ingest replies + rollup metrics (gated)
-        if: ${{ inputs.REPLIES_SINCE != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.REPLIES_SINCE != '' }}
         run: |
           python cli.py outreach replies --client "${{ inputs.client }}" --since-days "${{ inputs.REPLIES_SINCE }}" --out-root audits
           python cli.py outreach metrics --client "${{ inputs.client }}" --out-root audits
