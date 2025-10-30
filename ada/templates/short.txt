@@ -1,0 +1,12 @@
+Subject: Quick idea for {company}
+
+Hi {first_name},
+
+I had a quick idea for {company} that could move the needle this quarter.
+
+In short: {value_prop}.
+
+Worth a brief chat?
+
+Cheers,
+{sender_name}

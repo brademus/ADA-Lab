@@ -17,6 +17,10 @@ from ada.templates.library import get_variants_for_set
 from ada.store import sqlite as store
 from datetime import datetime, timedelta
 import json
+from ada.crm import db as crmdb
+from ada.templates import render as tmpl_render
+from ada.templates.selector import choose_variant
+from ada.outbox import DryOutbox, send_approved
 
 def cmd_owners(args):
     owners = hubspot.list_owners()
@@ -450,6 +454,182 @@ def cmd_outreach_metrics(args):
         (out_root / c.slug / "outreach_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
         print(f"[green]{c.slug}: metrics written (contacted={contacted}, replies={replies})")
 
+
+def _ensure_client_context(slug: str, config_path: str | None) -> ClientConfig:
+    if config_path and Path(config_path).exists():
+        return get_client(load_clients(config_path), slug)
+    # Fallback minimal ClientConfig-like object
+    from types import SimpleNamespace
+    return SimpleNamespace(slug=slug, name=slug, overrides={}, brand_voice="Confident, concise, helpful.")
+
+
+def _ingest_contacts_for_client(slug: str, out_root: Path, limit: int, *, csv_only: bool = False) -> int:
+    c_dir = out_root / slug; c_dir.mkdir(parents=True, exist_ok=True)
+    dbpath = c_dir / "outbox.sqlite"
+    crmdb.init_db(dbpath)
+    # Create minimal business record
+    crmdb.upsert_business(dbpath, bid=f"biz_{slug}", slug=slug, name=slug)
+    # Prefer CSV if present; else HubSpot if token; else synthesize a small csv
+    csvp = c_dir / "contacts.csv"
+    rows = []
+    if csvp.exists():
+        df = pd.read_csv(csvp)
+        df = df.where(pd.notnull(df), None)
+        for _, r in df.head(limit).iterrows():
+            rows.append({
+                'id': str(r.get('id') or f"ct_{_}"),
+                'name': ((r.get('firstName') or '') + ' ' + (r.get('lastName') or '')).strip() or (r.get('email') or 'Contact'),
+                'title': r.get('title') or '',
+                'email': r.get('email'),
+                'company': r.get('company') or '',
+                'domain': (r.get('email') or '').split('@')[-1] if r.get('email') else '',
+                'size': r.get('company_size') or '',
+            })
+    else:
+        token = os.getenv("HUBSPOT_TOKEN")
+        if token and not csv_only:
+            try:
+                # Use conservative property set
+                props = ["email", "firstname", "lastname", "jobtitle", "company", "lifecyclestage"]
+                i = 0
+                for c in hubspot.stream_contacts(max_total=limit, properties=props):
+                    p = c.get("properties", {}) or {}
+                    rows.append({
+                        'id': c.get('id') or f"ct_{i}",
+                        'name': ((p.get('firstname') or '') + ' ' + (p.get('lastname') or '')).strip() or (p.get('email') or 'Contact'),
+                        'title': p.get('jobtitle') or '',
+                        'email': p.get('email'),
+                        'company': p.get('company') or '',
+                        'domain': (p.get('email') or '').split('@')[-1] if p.get('email') else '',
+                        'size': '',
+                    }); i += 1
+            except Exception:
+                # Fallback to synthetic on any hubspot failure
+                rows = []
+        if not rows:
+            # Synthesize a tiny set for CI smoke
+            domains = ["example.com", "acme.io", "contoso.com", "widgets.co"]
+            for i in range(int(limit)):
+                rows.append({
+                    'id': f"ct_{i}",
+                    'name': f"Test User {i}",
+                    'title': 'Head of Growth' if i % 2 == 0 else 'Marketing Manager',
+                    'email': f"user{i}@{domains[i % len(domains)]}",
+                    'company': f"Company {i}",
+                    'domain': domains[i % len(domains)],
+                    'size': '50-200' if i % 2 == 0 else '200-1000',
+                })
+            # Also write a csv for visibility
+            pd.DataFrame(rows).to_csv(csvp, index=False)
+    # Persist contacts
+    for r in rows:
+        crmdb.upsert_company(dbpath, cid=f"co_{r['domain'] or r['company'] or 'na'}", bid=f"biz_{slug}", name=r['company'] or r['domain'] or 'N/A', domain=r['domain'] or None, size=r.get('size') or None)
+        crmdb.upsert_contact(dbpath, cid=str(r['id']), bid=f"biz_{slug}", company_id=f"co_{r['domain'] or r['company'] or 'na'}", name=r['name'], title=r.get('title'), email=r.get('email'), origin='csv' if csvp.exists() else ('hubspot' if os.getenv('HUBSPOT_TOKEN') else 'synthetic'))
+    return len(rows)
+
+
+def _score_contacts(slug: str, out_root: Path) -> int:
+    # naive scoring based on title/company size/email domain
+    import sqlite3, math
+    dbpath = out_root / slug / "outbox.sqlite"
+    conn = sqlite3.connect(str(dbpath)); cur = conn.cursor()
+    cur.execute("SELECT id, title, email FROM contacts")
+    rows = cur.fetchall(); conn.close()
+    n=0
+    for cid, title, email in rows:
+        score = 50.0
+        t = (title or '').lower()
+        if any(k in t for k in ["head", "director", "vp", "chief"]):
+            score += 20
+        if any(k in t for k in ["growth", "marketing", "demand", "sales"]):
+            score += 10
+        domain = (email or '').split('@')[-1] if email else ''
+        if domain.endswith('.io') or domain.endswith('.ai'):
+            score += 5
+        score = min(score, 99.0)
+        crmdb.update_fit_score(dbpath, cid, score)
+        n += 1
+    return n
+
+
+def _draft_emails(slug: str, out_root: Path, limit: int, brand_voice: str) -> int:
+    import sqlite3
+    dbpath = out_root / slug / "outbox.sqlite"
+    conn = sqlite3.connect(str(dbpath)); cur = conn.cursor()
+    cur.execute("SELECT id, name, title, email, fit_score FROM contacts ORDER BY fit_score DESC NULLS LAST")
+    contacts = cur.fetchall(); conn.close()
+    count = 0
+    for idx, (cid, name, title, email, fit_score) in enumerate(contacts[:limit]):
+        first_name = (name or '').split(' ')[0] if name else 'there'
+        size = ''  # kept simple for now
+        variant = choose_variant(float(fit_score or 0.0), size)
+        ctx = {
+            'first_name': first_name,
+            'company': (email or '').split('@')[-1].split('.')[0].title() if email else 'your team',
+            'title': title or '',
+            'brand_voice': brand_voice,
+            'value_prop': 'book more qualified meetings faster',
+            'value_hint': 'more pipeline with less manual work',
+            'peer_group': 'similar',
+            'value_metric': 'reply rates',
+            'value_amount': '20–40% in 30 days',
+            'sender_name': 'ADA',
+        }
+        subj, body = tmpl_render.render_template('short' if variant=='short' else ('medium' if variant=='medium' else 'value'), ctx)
+        crmdb.insert_email_draft(dbpath, eid=f"em_{cid}", bid=f"biz_{slug}", contact_id=cid, subject=subj, body=body)
+        count += 1
+    return count
+
+
+def _emit_metrics(slug: str, out_root: Path) -> None:
+    dbpath = out_root / slug / "outbox.sqlite"
+    m = crmdb.compute_metrics(dbpath)
+    out = out_root / slug / "outreach_metrics.json"
+    out.write_text(json.dumps(m, indent=2), encoding="utf-8")
+
+
+def cmd_autopilot(args):
+    slug = args.client
+    out_root = Path(args.out_root or 'audits'); out_root.mkdir(parents=True, exist_ok=True)
+    limit = int(args.limit)
+    c = _ensure_client_context(slug, getattr(args, 'config', None))
+    c_dir = out_root / slug; c_dir.mkdir(parents=True, exist_ok=True)
+    err_file = c_dir / 'error.txt'
+    try:
+        n = _ingest_contacts_for_client(slug, out_root, limit, csv_only=bool(getattr(args, 'csv_only', False)))
+        print(f"[blue]{slug}: ingested {n} contacts")
+        _ = _score_contacts(slug, out_root)
+        drafted = _draft_emails(slug, out_root, limit, getattr(c, 'brand_voice', 'Confident, concise, helpful.'))
+        print(f"[blue]{slug}: drafted {drafted} emails")
+        if getattr(args, 'approve_ids', None):
+            ids = [s.strip() for s in (args.approve_ids or '').split(',') if s.strip()]
+            crmdb.approve_emails(c_dir / 'outbox.sqlite', ids)
+        else:
+            # Approve top N drafts by default
+            # Direct SQL to mark some 'draft' rows as 'approved'
+            import sqlite3
+            conn = sqlite3.connect(str(c_dir / 'outbox.sqlite')); cur = conn.cursor()
+            cur.execute("UPDATE emails SET status='approved' WHERE status='draft' LIMIT ?", (limit,))
+            conn.commit(); conn.close()
+        sent = 0
+        if bool(args.send_now):
+            sent = send_approved(c_dir / 'outbox.sqlite', DryOutbox(), limit=limit)
+            print(f"[green]{slug}: sent {sent} emails (dry)")
+        # replies simulation
+        if getattr(args, 'replies_since', None):
+            try:
+                crmdb.simulate_replies(c_dir / 'outbox.sqlite', since_days=int(args.replies_since))
+            except Exception:
+                pass
+        _emit_metrics(slug, out_root)
+        print(f"[green]{slug}: metrics emitted → {c_dir / 'outreach_metrics.json'}")
+    except Exception as e:
+        import traceback
+        err_file.write_text(traceback.format_exc(), encoding='utf-8')
+        print(f"[red]Autopilot FAILED for {slug}: {e}")
+        import sys
+        sys.exit(2)
+
 def main():
     ap = argparse.ArgumentParser("ada")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -525,6 +705,17 @@ def main():
     pmetrics.add_argument("--config", required=True)
     pmetrics.add_argument("--out-root", default="audits")
     pmetrics.set_defaults(func=cmd_outreach_metrics)
+    # Autopilot (ADA 2.0 substrate)
+    p_auto = sub.add_parser("autopilot", help="ADA 2.0 Autopilot: ingest, score, draft, approve/send, simulate replies, metrics")
+    p_auto.add_argument("--client", required=True, help="Client slug (e.g., acme)")
+    p_auto.add_argument("--config", help="Optional clients config (toml/yaml)")
+    p_auto.add_argument("--limit", default="50")
+    p_auto.add_argument("--approve-ids", help="CSV of email IDs to approve")
+    p_auto.add_argument("--send-now", action="store_true", help="Send immediately after draft approval (dry by default)")
+    p_auto.add_argument("--replies-since", default=None, help="Simulate replies in last N days")
+    p_auto.add_argument("--csv-only", action="store_true", help="Do not call HubSpot even if token is present; use CSV or synthetic")
+    p_auto.add_argument("--out-root", default="audits")
+    p_auto.set_defaults(func=cmd_autopilot)
     args = ap.parse_args(); args.func(args)
 
 if __name__ == "__main__":

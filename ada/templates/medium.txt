@@ -1,0 +1,16 @@
+Subject: Idea for {company} — {value_hint}
+
+Hi {first_name},
+
+Noticed a pattern among {peer_group} teams like {company}. We help them {value_prop}, typically in a few weeks without heavy lift.
+
+Based on your role as {title}, I pulled a quick angle in your brand voice:
+
+"{brand_voice}"
+
+If this resonates, I can share a 2-slide overview and examples.
+
+Open to 15 min next week?
+
+Best,
+{sender_name}

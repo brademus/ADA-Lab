@@ -19,15 +19,29 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
     "owner_imbalance_pct": 0.0,
     "last_audited": "",
     "summary_href": "summary.html" if summary_html.exists() else ("summary.md" if summary_md.exists() else ""),
-    "contacted": 0,
+    # Autopilot outreach metrics
+    "emails_drafted": 0,
+    "emails_sent": 0,
     "replies": 0,
     "meetings": 0,
     "reply_rate": 0.0,
     "outbox_link": "outbox.sqlite" if (client_dir / "outbox.sqlite").exists() else "",
-    # new per-channel splits for UI
+    # legacy per-channel splits (kept for backward compat)
     "contacted_by_channel": {},
     "replies_by_channel": {},
   }
+  # Prefer new outreach_metrics.json if present
+  outreach_metrics = client_dir / "outreach_metrics.json"
+  if outreach_metrics.exists():
+    try:
+      m = json.loads(outreach_metrics.read_text(encoding="utf-8"))
+      insights["emails_drafted"] = int(m.get("emails_drafted", 0))
+      insights["emails_sent"] = int(m.get("emails_sent", 0))
+      insights["replies"] = int(m.get("replies", 0))
+      insights["meetings"] = int(m.get("meetings", 0))
+      insights["reply_rate"] = float(m.get("reply_rate", 0.0))
+    except Exception:
+      pass
   if summary_json.exists():
     try:
       data = json.loads(summary_json.read_text(encoding="utf-8"))
@@ -35,11 +49,10 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
       insights["dormant_pct"] = float(data.get("dormant_pct", 0.0))
       insights["owner_imbalance_pct"] = float(data.get("owner_imbalance_pct", 0.0))
       insights["last_audited"] = str(data.get("ts_utc", ""))
-      # outreach merge
-      insights["contacted"] = int(data.get("contacted", 0))
-      insights["replies"] = int(data.get("replies", 0))
-      insights["meetings"] = int(data.get("meetings", 0))
-      insights["reply_rate"] = float(data.get("reply_rate", 0.0))
+      # legacy outreach merge for backward compat
+      insights["replies"] = int(data.get("replies", insights.get("replies", 0)))
+      insights["meetings"] = int(data.get("meetings", insights.get("meetings", 0)))
+      insights["reply_rate"] = float(data.get("reply_rate", insights.get("reply_rate", 0.0)))
       insights["contacted_by_channel"] = data.get("contacted_by_channel", {})
       insights["replies_by_channel"] = data.get("replies_by_channel", {})
       insights["variant_perf"] = data.get("variant_perf", [])
@@ -58,43 +71,44 @@ def collect_metrics(client_dir: Path) -> Dict[str, Any]:
   return insights
 
 def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path: Path) -> None:
-    rows: List[str] = []
-    for c in clients:
-        cdir = audits_root / c.slug
-        m = collect_metrics(cdir)
-        link = m.get("summary_href") or ""
-        link_html = f'<a href="{c.slug}/{link}">Open</a>' if link else "—"
-        failed = (cdir / "error.txt").exists()
-        conn_err = (cdir / "connector_error.txt").exists()
-        status_txt = "FAILED" if failed or conn_err else ""
-        title_attr = ""
-        if conn_err:
-            try:
-                tip = (cdir / "connector_error.txt").read_text(encoding="utf-8").strip().splitlines()[0]
-                title_attr = f' title="{tip}"'
-            except Exception:
-                title_attr = ''
-        status_html = f'<span style="color:red;font-weight:600"{title_attr}>{status_txt}</span>' if status_txt else ""
+  rows: List[str] = []
+  def fmt_split(d: Dict[str, Any]) -> str:
+    try:
+      return ", ".join(f"{k}:{int(v)}" for k, v in d.items()) if d else "—"
+    except Exception:
+      return "—"
 
-        def fmt_split(d: Dict[str, Any]) -> str:
-            try:
-                return ", ".join(f"{k}:{int(v)}" for k, v in d.items()) if d else "—"
-            except Exception:
-                return "—"
+  for c in clients:
+    cdir = audits_root / c.slug
+    m = collect_metrics(cdir)
+    link = m.get("summary_href") or ""
+    link_html = f'<a href="{c.slug}/{link}">Open</a>' if link else "—"
+    failed = (cdir / "error.txt").exists()
+    conn_err = (cdir / "connector_error.txt").exists()
+    status_txt = "FAILED" if failed or conn_err else ""
+    title_attr = ""
+    if conn_err:
+      try:
+        tip = (cdir / "connector_error.txt").read_text(encoding="utf-8").strip().splitlines()[0]
+        title_attr = f' title="{tip}"'
+      except Exception:
+        title_attr = ''
+    status_html = f'<span style="color:red;font-weight:600"{title_attr}>{status_txt}</span>' if status_txt else ""
 
-        rows.append(
-            "<tr>"
-            f"<td>{c.name} <small>({c.slug})</small> {status_html}</td>"
-            f"<td>{m.get('last_audited','')}</td>"
-            f"<td>{m.get('mean_quality',0.0):.2f}</td>"
-            f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
-            f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
-            f"<td>{fmt_split(m.get('contacted_by_channel',{}))}</td>"
-            f"<td>{fmt_split(m.get('replies_by_channel',{}))}</td>"
-            f"<td>{m.get('reply_rate',0.0):.2f}</td>"
-            f"<td>{link_html}</td>"
-            "</tr>"
-        )
+    rows.append(
+      "<tr>"
+      f"<td>{c.name} <small>({c.slug})</small> {status_html}</td>"
+      f"<td>{m.get('last_audited','')}</td>"
+      f"<td>{m.get('mean_quality',0.0):.2f}</td>"
+      f"<td>{m.get('dormant_pct',0.0):.2f}%</td>"
+      f"<td>{m.get('owner_imbalance_pct',0.0):.2f}%</td>"
+      f"<td>{int(m.get('emails_drafted',0))}</td>"
+      f"<td>{int(m.get('emails_sent',0))}</td>"
+      f"<td>{int(m.get('replies',0))}</td>"
+      f"<td>{int(m.get('meetings',0))}</td>"
+      f"<td>{link_html}</td>"
+      "</tr>"
+    )
 
     # Variant sections per client
     variant_sections: List[str] = []
@@ -158,14 +172,15 @@ def render_master_index(clients: List[ClientConfig], audits_root: Path, out_path
         <th>Avg Quality</th>
         <th>% Dormant</th>
         <th>Owner Load</th>
-        <th>Contacted</th>
+        <th>Emails Drafted</th>
+        <th>Emails Sent</th>
         <th>Replies</th>
-        <th>Reply Rate</th>
+        <th>Meetings</th>
         <th>Report</th>
       </tr>
     </thead>
     <tbody>
-  {''.join(rows) if rows else '<tr><td colspan="9">No audits yet.</td></tr>'}
+  {''.join(rows) if rows else '<tr><td colspan="10">No audits yet.</td></tr>'}
     </tbody>
   </table>
   {''.join(variant_sections)}

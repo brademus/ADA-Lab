@@ -131,6 +131,25 @@ jobs:
           python cli.py outreach plan --all --config clients.toml --limit 500
           python cli.py outreach draft --all --config clients.toml --limit 50
 
+      - name: Autopilot smoke (ADA 2.0 substrate)
+        run: |
+          set -e
+          # Determine a slug: prefer first from clients.toml if present; else use 'smoke'
+          SLUG="smoke"
+          if [ -s clients.toml ]; then
+            SLUG=$(python -c "from ada.clients import load_clients; cs=load_clients('clients.toml'); print(cs[0].slug if cs else 'smoke')" || echo smoke)
+          fi
+          echo "Running autopilot for $SLUG"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            python cli.py autopilot --client "$SLUG" --limit 5 --csv-only --out-root audits
+          else
+            python cli.py autopilot --client "$SLUG" --limit 5 --send-now --out-root audits
+          fi
+
+      - name: Render dashboard index (best effort)
+        run: |
+          python -m ada.ci_render_index audits
+
       - name: Validate audits output
         run: |
           if [ -d audits ] && [ -n "$(ls -A audits 2>/dev/null)" ]; then

@@ -97,6 +97,27 @@ python cli.py outreach plan --client acme_corp --config clients.toml --limit 200
 python cli.py outreach draft --client acme_corp --config clients.toml --limit 50
 ```
 
+## Phase 4 — ADA 2.0: Autopilot substrate (preview)
+
+This repository now includes an experimental Autopilot substrate that provides a lightweight CRM/outbox (sqlite) and a dry-run send path. It's intentionally conservative: HubSpot remains optional and the send transport is a dry-run by default.
+
+Quick local smoke:
+
+```bash
+# Run the autopilot flow for a client slug (creates audits/<slug>/outbox.sqlite, drafts, and outreach_metrics.json)
+python cli.py autopilot --client smoke --limit 5 --out-root audits
+
+# Run with immediate send (dry-run) and replies simulation
+python cli.py autopilot --client smoke --limit 5 --send-now --replies-since 7 --out-root audits
+```
+
+After a run you should see `audits/<slug>/outbox.sqlite`, `audits/<slug>/outreach_metrics.json`, and `audits/index.html` updated by `render_master_index` when you run `audit --all`.
+
+Notes:
+- The outbox uses `sqlite` at `audits/<slug>/outbox.sqlite` for easy local inspection and CI artifact upload.
+- Templates live in `ada/templates/` and a simple selector chooses a template by fit score and company size.
+- Sending is a dry-run implementation that logs to stdout and marks messages as `sent` in sqlite; a real SMTP/REST provider is planned for Phase 4B.
+
 To approve and send (requires Gmail creds in `clients.toml`):
 
 ```bash
@@ -105,6 +126,23 @@ python cli.py outreach send --client acme_corp --config clients.toml --max 25
 ```
 
 See `CONTRIBUTING.md` for notes on secrets and CI.
+
+## Phase 4: ADA 2.0 Autopilot (sqlite + dry outbox)
+
+This phase adds a lightweight CRM substrate (sqlite) and an Autopilot CLI that can run without HubSpot. It ingests contacts (from HubSpot if token present, else CSV or synthetic), scores them, drafts personalized emails using simple templates, and emits outreach metrics. Sending is a dry-run by default and persisted to `outbox.sqlite`.
+
+Quick start (no HubSpot required):
+
+```bash
+python cli.py autopilot --client smoke --limit 10 --send-now
+```
+
+Outputs per client under `audits/<slug>/`:
+- `outbox.sqlite` (sqlite database for contacts, emails, activities)
+- `outreach_metrics.json` (drafted/sent/replies/meetings + rates)
+- `summary.html/json` (from audits, if you ran `audit` too)
+
+The master dashboard `audits/index.html` now includes columns: Emails Drafted, Emails Sent, Replies, Meetings.
 
 ## Notes
 -- `clients.toml` is intentionally ignored in `.gitignore` for local usage — CI must supply it via `CLIENTS_TOML_B64`.

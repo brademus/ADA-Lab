@@ -1,0 +1,12 @@
+Subject: How {company} can {value_hint}
+
+Hi {first_name},
+
+We help {industry} teams at {peer_group} improve {value_metric} by {value_amount}. For {company}, that likely means {value_prop}.
+
+Happy to draft a mini plan tailored to {company}.
+
+Would you be the right person to sanity-check?
+
+Thanks,
+{sender_name}
