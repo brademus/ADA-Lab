@@ -1,7 +1,10 @@
 from __future__ import annotations
-from typing import Iterable, Protocol
-from ada.core.schemas import Contact, Message
+
+from collections.abc import Iterable
 from datetime import datetime
+from typing import Protocol
+
+from ada.core.schemas import Contact, Message
 
 
 class RetryableError(Exception):

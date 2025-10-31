@@ -1,16 +1,19 @@
 from __future__ import annotations
+
 import os
-from typing import Dict, List, Optional
+
 import httpx
-from tenacity import retry, wait_exponential, stop_after_attempt
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 API = "https://api.hubapi.com"
+
 
 def _token() -> str:
     t = os.getenv("HUBSPOT_TOKEN")
     if not t:
         raise RuntimeError("HUBSPOT_TOKEN is not set")
     return t
+
 
 def _client() -> httpx.Client:
     return httpx.Client(
@@ -19,15 +22,19 @@ def _client() -> httpx.Client:
         timeout=30.0,
     )
 
+
 @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(5))
-def list_owners() -> List[Dict]:
+def list_owners() -> list[dict]:
     with _client() as c:
         r = c.get("/crm/v3/owners")
         r.raise_for_status()
         return r.json().get("results", [])
 
+
 @retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(5))
-def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[List[str]]=None) -> Dict:
+def list_contacts(
+    limit: int = 200, after: str | None = None, properties: list[str] | None = None
+) -> dict:
     # Build a conservative request that only includes limit/after. Some
     # HubSpot accounts reject property filters in this endpoint and return
     # 400 Invalid request; to maximize compatibility in CI we omit the
@@ -49,6 +56,7 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
             # diagnostics if all attempts fail so CI artifacts contain
             # the raw responses for easier triage.
             diagnostics = []
+
             def _resp_info(resp):
                 try:
                     text = resp.text
@@ -80,7 +88,7 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
                     r3.raise_for_status()
                     return r3.json()
                 except Exception:
-                    diagnostics.append(("search(query=\"\")", _resp_info(r3)))
+                    diagnostics.append(('search(query="")', _resp_info(r3)))
             except Exception as err:
                 diagnostics.append(("search(query)_request_error", str(err)))
 
@@ -107,16 +115,22 @@ def list_contacts(limit:int=200, after:Optional[str]=None, properties:Optional[L
                 orig_body = r.text
             except Exception:
                 orig_body = "(unable to read response body)"
-            info = {"original": {"status_code": getattr(r, "status_code", None), "body": orig_body}, "fallbacks": diagnostics}
+            info = {
+                "original": {"status_code": getattr(r, "status_code", None), "body": orig_body},
+                "fallbacks": diagnostics,
+            }
             raise RuntimeError(f"HubSpot API listing failed: {info}") from e
 
-def stream_contacts(max_total:int=2000, properties:Optional[List[str]]=None):
+
+def stream_contacts(max_total: int = 2000, properties: list[str] | None = None):
     total, after = 0, None
     while total < max_total:
         page = list_contacts(limit=100, after=after, properties=properties)
         for row in page.get("results", []):
             yield row
             total += 1
-            if total >= max_total: return
+            if total >= max_total:
+                return
         after = page.get("paging", {}).get("next", {}).get("after")
-        if not after: break
+        if not after:
+            break

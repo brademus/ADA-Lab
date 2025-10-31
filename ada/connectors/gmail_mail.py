@@ -1,10 +1,13 @@
 from __future__ import annotations
-from typing import Iterable, Optional
-from email.message import EmailMessage
-from datetime import datetime
-from ada.core import schemas
-from .base import TerminalError
+
 import time
+from collections.abc import Iterable
+from datetime import datetime
+from email.message import EmailMessage
+
+from ada.core import schemas
+
+from .base import TerminalError
 
 
 class GmailConnector:
@@ -23,7 +26,12 @@ class GmailConnector:
         self.client_id = self.client_cfg.get("gmail_client_id")
         self.client_secret = self.client_cfg.get("gmail_client_secret")
         if not (self.user and self.refresh and self.client_id and self.client_secret):
-            raise TerminalError("Missing Gmail credentials in client config; set gmail_user, gmail_refresh_token, gmail_client_id, gmail_client_secret")
+            raise TerminalError(
+                
+                    "Missing Gmail credentials in client config; set "
+                    "gmail_user, gmail_refresh_token, gmail_client_id, gmail_client_secret"
+                
+            )
 
     def _build_message(self, subject: str, body: str, to: str) -> EmailMessage:
         m = EmailMessage()
@@ -62,5 +70,6 @@ class GmailConnector:
         return message
 
     def list_replies(self, since: datetime) -> Iterable[schemas.Message]:
-        # Minimal stub: no live API calls. Real implementation would call Gmail users.messages.list and get, then yield Message items.
+        # Minimal stub: no live API calls.
+        # Real implementation would call Gmail users.messages.list/get and yield Message items.
         return []

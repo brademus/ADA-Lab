@@ -1,8 +1,10 @@
 from __future__ import annotations
-from typing import Any, Dict, List
-from pydantic import BaseModel, Field
-from pathlib import Path
+
 import re
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 try:
     import tomllib  # py311+
@@ -21,10 +23,15 @@ class ClientConfig(BaseModel):
     hubspot_token is optional: if omitted the global HUBSPOT_TOKEN environment
     variable (for example provided by CI) will be used.
     """
+
     slug: str = Field(..., description="Stable machine slug (e.g., 'acme_corp').")
     name: str = Field(..., description="Human readable client name.")
-    hubspot_token: str | None = Field(None, description="Optional HubSpot Private App Access Token (PAT).")
-    overrides: Dict[str, Any] = Field(default_factory=dict, description="Optional per-client overrides.")
+    hubspot_token: str | None = Field(
+        None, description="Optional HubSpot Private App Access Token (PAT)."
+    )
+    overrides: dict[str, Any] = Field(
+        default_factory=dict, description="Optional per-client overrides."
+    )
 
 
 _slug_non_alnum = re.compile(r"[^a-z0-9]+")
@@ -40,7 +47,7 @@ def slugify(name: str) -> str:
     return s
 
 
-def _load_toml(path: Path) -> Dict[str, Dict[str, Any]]:
+def _load_toml(path: Path) -> dict[str, dict[str, Any]]:
     with path.open("rb") as f:
         data = tomllib.load(f)
     if not isinstance(data, dict):
@@ -48,7 +55,7 @@ def _load_toml(path: Path) -> Dict[str, Dict[str, Any]]:
     return data
 
 
-def _load_yaml(path: Path) -> Dict[str, Dict[str, Any]]:
+def _load_yaml(path: Path) -> dict[str, dict[str, Any]]:
     if yaml is None:
         raise RuntimeError("PyYAML is not installed; cannot parse YAML client config.")
     with path.open("r", encoding="utf-8") as f:
@@ -58,7 +65,7 @@ def _load_yaml(path: Path) -> Dict[str, Dict[str, Any]]:
     return data
 
 
-def load_clients(path: str) -> List[ClientConfig]:
+def load_clients(path: str) -> list[ClientConfig]:
     """
     Load client configs from TOML or YAML. Top-level keys like:
       [client_acme_corp] → slug 'acme_corp' (strip 'client_' prefix).
@@ -75,7 +82,7 @@ def load_clients(path: str) -> List[ClientConfig]:
     else:
         raise ValueError("Unsupported config type; use .toml or .yaml")
 
-    clients: List[ClientConfig] = []
+    clients: list[ClientConfig] = []
     for section_key, cfg in raw.items():
         if not isinstance(cfg, dict):
             continue
@@ -92,7 +99,7 @@ def load_clients(path: str) -> List[ClientConfig]:
     return clients
 
 
-def get_client(clients: List[ClientConfig], slug: str) -> ClientConfig:
+def get_client(clients: list[ClientConfig], slug: str) -> ClientConfig:
     """Find a client by slug (case-insensitive)."""
     target = slugify(slug)
     for c in clients:

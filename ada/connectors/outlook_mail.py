@@ -1,30 +1,32 @@
 from __future__ import annotations
-"""Outlook Mail connector (stub for Phase 2).
 
-This minimal MS Graph-like connector mirrors the GmailConnector shape and
-is suitable for tests and CI without real network calls.
-
-Expected client config keys (can be provided via ClientConfig.overrides):
-- outlook_user
-- tenant_id
-- client_id
-- client_secret
-- refresh_token
-
-Behavior:
-- draft(): constructs a Message with channel="outlook" and status="draft".
-- send(): transitions approved/draft/queued messages to status="sent" and
-  annotates meta with sent_at; simulates light backoff boundaries.
-- list_replies(since): returns an empty iterable; real implementation would
-  call MS Graph /messages with filters.
-
-Rate limiting and quiet hours policy are handled in higher layers (policy/CLI).
-"""
-from typing import Iterable
-from datetime import datetime
+# Outlook Mail connector (stub for Phase 2).
+#
+# This minimal MS Graph-like connector mirrors the GmailConnector shape and
+# is suitable for tests and CI without real network calls.
+#
+# Expected client config keys (can be provided via ClientConfig.overrides):
+# - outlook_user
+# - tenant_id
+# - client_id
+# - client_secret
+# - refresh_token
+#
+# Behavior:
+# - draft(): constructs a Message with channel="outlook" and status="draft".
+# - send(): transitions approved/draft/queued messages to status="sent" and
+#   annotates meta with sent_at; simulates light backoff boundaries.
+# - list_replies(since): returns an empty iterable; real implementation would
+#   call MS Graph /messages with filters.
+#
+# Rate limiting and quiet hours policy are handled in higher layers (policy/CLI).
 import time
+from collections.abc import Iterable
+from datetime import datetime
 from email.message import EmailMessage
+
 from ada.core import schemas
+
 from .base import TerminalError
 
 
@@ -43,9 +45,18 @@ class OutlookConnector:
         self.client_secret = self.client_cfg.get("client_secret")
         self.refresh = self.client_cfg.get("refresh_token")
         # Minimal checks; real implementation would also validate tokens/scopes.
-        if not (self.user and self.tenant and self.client_id and self.client_secret and self.refresh):
+        if not (
+            self.user
+            and self.tenant
+            and self.client_id
+            and self.client_secret
+            and self.refresh
+        ):
             raise TerminalError(
-                "Missing Outlook credentials in client config; set outlook_user, tenant_id, client_id, client_secret, refresh_token"
+                
+                    "Missing Outlook credentials in client config; set "
+                    "outlook_user, tenant_id, client_id, client_secret, refresh_token"
+                
             )
 
     def _build_message(self, subject: str, body: str, to: str) -> EmailMessage:

@@ -1,8 +1,10 @@
 from __future__ import annotations
-from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+
 import sqlite3
+from collections.abc import Iterable
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
 def _connect(dbpath: Path) -> sqlite3.Connection:
@@ -111,59 +113,112 @@ def init_db(dbpath: Path) -> None:
         CREATE INDEX IF NOT EXISTS idx_settings_business ON settings(business_id);
         """
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
-def upsert_business(dbpath: Path, bid: str, slug: str, name: str, brand_voice: Optional[str] = None, daily_send_cap: int = 25) -> None:
+def upsert_business(
+    dbpath: Path,
+    bid: str,
+    slug: str,
+    name: str,
+    brand_voice: str | None = None,
+    daily_send_cap: int = 25,
+) -> None:
     now = datetime.utcnow().isoformat()
-    conn = _connect(dbpath); cur = conn.cursor()
+    conn = _connect(dbpath)
+    cur = conn.cursor()
     cur.execute(
-        """
-        INSERT INTO businesses(id, slug, name, brand_voice, outreach_mode, daily_send_cap, created_at, updated_at)
+        (
+            """
+        INSERT INTO businesses(
+            id, slug, name, brand_voice, outreach_mode, daily_send_cap, created_at, updated_at
+        )
         VALUES (?, ?, ?, ?, 'email', ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET slug=excluded.slug, name=excluded.name, brand_voice=excluded.brand_voice,
-            daily_send_cap=excluded.daily_send_cap, updated_at=excluded.updated_at
-        """,
-        (bid, slug, name, brand_voice or '', daily_send_cap, now, now),
-    )
-    conn.commit(); conn.close()
-
-
-def upsert_company(dbpath: Path, cid: str, bid: str, name: str, domain: Optional[str] = None, size: Optional[str] = None) -> None:
-    conn = _connect(dbpath); cur = conn.cursor()
-    cur.execute(
+        ON CONFLICT(id) DO UPDATE SET
+            slug=excluded.slug,
+            name=excluded.name,
+            brand_voice=excluded.brand_voice,
+            daily_send_cap=excluded.daily_send_cap,
+            updated_at=excluded.updated_at
         """
+        ),
+        (bid, slug, name, brand_voice or "", daily_send_cap, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+
+def upsert_company(
+    dbpath: Path, cid: str, bid: str, name: str, domain: str | None = None, size: str | None = None
+) -> None:
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    cur.execute(
+        (
+            """
         INSERT INTO companies(id, business_id, name, domain, size)
         VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET business_id=excluded.business_id, name=excluded.name, domain=excluded.domain, size=excluded.size
-        """,
-        (cid, bid, name, domain or '', size or ''),
-    )
-    conn.commit(); conn.close()
-
-
-def upsert_contact(dbpath: Path, cid: str, bid: str, company_id: Optional[str], name: str, title: Optional[str], email: Optional[str], origin: str = 'csv') -> None:
-    now = datetime.utcnow().isoformat()
-    conn = _connect(dbpath); cur = conn.cursor()
-    cur.execute(
+        ON CONFLICT(id) DO UPDATE SET
+            business_id=excluded.business_id,
+            name=excluded.name,
+            domain=excluded.domain,
+            size=excluded.size
         """
-        INSERT INTO contacts(id, business_id, company_id, name, title, email, status, origin, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id, name=excluded.name, title=excluded.title, email=excluded.email, updated_at=excluded.updated_at
-        """,
-        (cid, bid, company_id, name, title or '', email or '', origin, now, now),
+        ),
+        (cid, bid, name, domain or "", size or ""),
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
+
+
+def upsert_contact(
+    dbpath: Path,
+    cid: str,
+    bid: str,
+    company_id: str | None,
+    name: str,
+    title: str | None,
+    email: str | None,
+    origin: str = "csv",
+) -> None:
+    now = datetime.utcnow().isoformat()
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    cur.execute(
+        (
+            """
+        INSERT INTO contacts(
+            id, business_id, company_id, name, title, email, status, origin, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            company_id=excluded.company_id,
+            name=excluded.name,
+            title=excluded.title,
+            email=excluded.email,
+            updated_at=excluded.updated_at
+        """
+        ),
+        (cid, bid, company_id, name, title or "", email or "", origin, now, now),
+    )
+    conn.commit()
+    conn.close()
 
 
 def update_fit_score(dbpath: Path, cid: str, score: float) -> None:
-    conn = _connect(dbpath); cur = conn.cursor()
+    conn = _connect(dbpath)
+    cur = conn.cursor()
     cur.execute("UPDATE contacts SET fit_score=? WHERE id=?", (float(score), cid))
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
-def insert_email_draft(dbpath: Path, eid: str, bid: str, contact_id: str, subject: str, body: str, mode: str = 'email') -> None:
-    conn = _connect(dbpath); cur = conn.cursor()
+def insert_email_draft(
+    dbpath: Path, eid: str, bid: str, contact_id: str, subject: str, body: str, mode: str = "email"
+) -> None:
+    conn = _connect(dbpath)
+    cur = conn.cursor()
     cur.execute(
         """
         INSERT OR REPLACE INTO emails(id, business_id, contact_id, subject, body, mode, status)
@@ -171,55 +226,80 @@ def insert_email_draft(dbpath: Path, eid: str, bid: str, contact_id: str, subjec
         """,
         (eid, bid, contact_id, subject, body, mode),
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
 def approve_emails(dbpath: Path, ids: Iterable[str]) -> int:
-    conn = _connect(dbpath); cur = conn.cursor(); n=0
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    n = 0
     for mid in ids:
         cur.execute("UPDATE emails SET status='approved' WHERE id=?", (mid,))
         n += cur.rowcount
-    conn.commit(); conn.close(); return n
+    conn.commit()
+    conn.close()
+    return n
 
 
-def fetch_drafts(dbpath: Path, limit: int) -> List[sqlite3.Row]:
-    conn = _connect(dbpath); cur = conn.cursor()
+def fetch_drafts(dbpath: Path, limit: int) -> list[sqlite3.Row]:
+    conn = _connect(dbpath)
+    cur = conn.cursor()
     cur.execute("SELECT * FROM emails WHERE status='approved' LIMIT ?", (limit,))
-    rows = cur.fetchall(); conn.close(); return rows
+    rows = cur.fetchall()
+    conn.close()
+    return rows
 
 
 def mark_sent(dbpath: Path, mid: str) -> None:
-    conn = _connect(dbpath); cur = conn.cursor()
-    cur.execute("UPDATE emails SET status='sent', sent_at=? WHERE id=?", (datetime.utcnow().isoformat(), mid))
-    conn.commit(); conn.close()
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE emails SET status='sent', sent_at=? WHERE id=?",
+        (datetime.utcnow().isoformat(), mid),
+    )
+    conn.commit()
+    conn.close()
 
 
 def simulate_replies(dbpath: Path, since_days: int = 7) -> int:
     # Mark some sent emails as replied with synthetic classes
     import random
-    conn = _connect(dbpath); cur = conn.cursor()
+
+    conn = _connect(dbpath)
+    cur = conn.cursor()
     cur.execute("SELECT id FROM emails WHERE status='sent'")
     rows = [r[0] for r in cur.fetchall()]
     cnt = 0
     for mid in rows:
         if random.random() < 0.2:  # 20% reply rate
-            cls = random.choice(['positive', 'meeting', 'objection', 'not_now', 'ooo', 'unsub'])
-            cur.execute("UPDATE emails SET replied_at=?, reply_class=? WHERE id=?", (datetime.utcnow().isoformat(), cls, mid))
+            cls = random.choice(["positive", "meeting", "objection", "not_now", "ooo", "unsub"])
+            cur.execute(
+                "UPDATE emails SET replied_at=?, reply_class=? WHERE id=?",
+                (datetime.utcnow().isoformat(), cls, mid),
+            )
             cnt += 1
-    conn.commit(); conn.close(); return cnt
+    conn.commit()
+    conn.close()
+    return cnt
 
 
-def compute_metrics(dbpath: Path) -> Dict[str, Any]:
-    conn = _connect(dbpath); cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM emails WHERE status='draft'"); drafted = int(cur.fetchone()[0] or 0)
-    cur.execute("SELECT COUNT(*) FROM emails WHERE status='sent'"); sent = int(cur.fetchone()[0] or 0)
-    cur.execute("SELECT COUNT(*) FROM emails WHERE reply_class IS NOT NULL"); replies = int(cur.fetchone()[0] or 0)
-    cur.execute("SELECT COUNT(*) FROM emails WHERE reply_class='meeting'"); meetings = int(cur.fetchone()[0] or 0)
+def compute_metrics(dbpath: Path) -> dict[str, Any]:
+    conn = _connect(dbpath)
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM emails WHERE status='draft'")
+    drafted = int(cur.fetchone()[0] or 0)
+    cur.execute("SELECT COUNT(*) FROM emails WHERE status='sent'")
+    sent = int(cur.fetchone()[0] or 0)
+    cur.execute("SELECT COUNT(*) FROM emails WHERE reply_class IS NOT NULL")
+    replies = int(cur.fetchone()[0] or 0)
+    cur.execute("SELECT COUNT(*) FROM emails WHERE reply_class='meeting'")
+    meetings = int(cur.fetchone()[0] or 0)
     conn.close()
     return {
-        'emails_drafted': drafted,
-        'emails_sent': sent,
-        'replies': replies,
-        'meetings': meetings,
-        'reply_rate': (replies / sent) if sent else 0.0,
+        "emails_drafted": drafted,
+        "emails_sent": sent,
+        "replies": replies,
+        "meetings": meetings,
+        "reply_rate": (replies / sent) if sent else 0.0,
     }

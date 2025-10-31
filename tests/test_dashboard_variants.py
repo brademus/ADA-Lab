@@ -1,7 +1,9 @@
-from pathlib import Path
-from ada.dashboard import render_master_index
-from ada.clients import ClientConfig
 import json
+from pathlib import Path
+
+from ada.clients import ClientConfig
+from ada.dashboard import render_master_index
+
 
 def test_dashboard_variant_panel_renders(tmp_path: Path):
     audits_root = tmp_path
@@ -14,8 +16,24 @@ def test_dashboard_variant_panel_renders(tmp_path: Path):
         "owner_imbalance_pct": 0.0,
         "ts_utc": "2025-10-26T00:00:00Z",
         "variant_perf": [
-            {"variant_id": "A", "sent": 10, "opens": 6, "replies": 3, "meetings": 1, "reply_rate": 0.3, "conversion_rate": 0.1},
-            {"variant_id": "B", "sent": 8, "opens": 5, "replies": 2, "meetings": 0, "reply_rate": 0.25, "conversion_rate": 0.0},
+            {
+                "variant_id": "A",
+                "sent": 10,
+                "opens": 6,
+                "replies": 3,
+                "meetings": 1,
+                "reply_rate": 0.3,
+                "conversion_rate": 0.1,
+            },
+            {
+                "variant_id": "B",
+                "sent": 8,
+                "opens": 5,
+                "replies": 2,
+                "meetings": 0,
+                "reply_rate": 0.25,
+                "conversion_rate": 0.0,
+            },
         ],
     }
     (cdir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")

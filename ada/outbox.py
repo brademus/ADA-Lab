@@ -1,7 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Protocol
 from pathlib import Path
+from typing import Protocol
+
 from .crm import db as crmdb
 
 
@@ -27,7 +29,9 @@ def send_approved(dbpath: Path, provider: Provider, limit: int = 50) -> int:
     rows = crmdb.fetch_drafts(dbpath, limit)
     sent = 0
     for r in rows:
-        msg = Outbound(id=r["id"], to="", subject=r["subject"], body=r["body"])  # 'to' not stored yet
+        msg = Outbound(
+            id=r["id"], to="", subject=r["subject"], body=r["body"]
+        )  # 'to' not stored yet
         provider.send(msg)
         crmdb.mark_sent(dbpath, r["id"])
         sent += 1

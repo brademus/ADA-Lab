@@ -1,9 +1,20 @@
-from ada.orchestrator.policy import build_plan
-from ada.core.schemas import Contact
 from datetime import datetime
 
+from ada.core.schemas import Contact
+from ada.orchestrator.policy import build_plan
+
+
 def mkc(i: int, email: str, score: float = 0.0) -> Contact:
-    return Contact(id=str(i), email=email, first_name=None, last_name=None, owner_id=None, lifecycle=None, last_modified=None, score=score)
+    return Contact(
+        id=str(i),
+        email=email,
+        first_name=None,
+        last_name=None,
+        owner_id=None,
+        lifecycle=None,
+        last_modified=None,
+        score=score,
+    )
 
 
 def test_quiet_hours_blocks_all():

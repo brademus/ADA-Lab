@@ -1,9 +1,10 @@
 from __future__ import annotations
-import sqlite3
-from pathlib import Path
+
 import json
-from typing import Optional, List, Dict
+import sqlite3
 from datetime import datetime
+from pathlib import Path
+
 from ada.core import schemas
 
 
@@ -60,7 +61,8 @@ def init_db(dbpath: Path) -> None:
         )
         """
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
 def save_message(dbpath: Path, msg: schemas.Message) -> None:
@@ -68,11 +70,15 @@ def save_message(dbpath: Path, msg: schemas.Message) -> None:
     conn = _connect(dbpath)
     cur = conn.cursor()
     cur.execute(
-        """
-        INSERT INTO messages(id, client_slug, contact_id, role, channel, subject, body, ts, status, meta)
+        (
+            """
+        INSERT INTO messages(
+            id, client_slug, contact_id, role, channel, subject, body, ts, status, meta
+        )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET status=excluded.status, meta=excluded.meta
-        """,
+        """
+        ),
         (
             msg.id,
             msg.client_slug,
@@ -86,15 +92,20 @@ def save_message(dbpath: Path, msg: schemas.Message) -> None:
             json.dumps(msg.meta),
         ),
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
 
 
-def update_status(dbpath: Path, message_id: str, status: str, meta: Optional[Dict] = None) -> None:
+def update_status(dbpath: Path, message_id: str, status: str, meta: dict | None = None) -> None:
     init_db(dbpath)
     conn = _connect(dbpath)
     cur = conn.cursor()
-    cur.execute("UPDATE messages SET status=?, meta=? WHERE id=?", (status, json.dumps(meta or {}), message_id))
-    conn.commit(); conn.close()
+    cur.execute(
+        "UPDATE messages SET status=?, meta=? WHERE id=?",
+        (status, json.dumps(meta or {}), message_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def log_event(dbpath: Path, ev: schemas.Event) -> None:
@@ -102,10 +113,23 @@ def log_event(dbpath: Path, ev: schemas.Event) -> None:
     conn = _connect(dbpath)
     cur = conn.cursor()
     cur.execute(
-        "INSERT OR REPLACE INTO events(id, client_slug, kind, message_id, contact_id, ts, meta) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (ev.id, ev.client_slug, ev.kind, ev.message_id, ev.contact_id, ev.ts.isoformat(), json.dumps(ev.meta)),
+        (
+            "INSERT OR REPLACE INTO events("
+            "id, client_slug, kind, message_id, contact_id, ts, meta"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?)"
+        ),
+        (
+            ev.id,
+            ev.client_slug,
+            ev.kind,
+            ev.message_id,
+            ev.contact_id,
+            ev.ts.isoformat(),
+            json.dumps(ev.meta),
+        ),
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
     # Update variant stats if the message carried a variant_id in its meta
     try:
         if ev.message_id:
@@ -116,7 +140,10 @@ def log_event(dbpath: Path, ev: schemas.Event) -> None:
 
 
 def _update_variant_from_message(dbpath: Path, message_id: str, kind: str) -> None:
-    """Helper: find message by id, parse meta for variant_id/variant_set and increment variant_stats accordingly."""
+    """
+    Helper: find message by id, parse meta for variant_id/variant_set and
+    increment variant_stats accordingly.
+    """
     init_db(dbpath)
     conn = _connect(dbpath)
     cur = conn.cursor()
@@ -136,7 +163,13 @@ def _update_variant_from_message(dbpath: Path, message_id: str, kind: str) -> No
         return
     now = datetime.utcnow().isoformat()
     # ensure row
-    cur.execute("INSERT OR IGNORE INTO variant_stats(variant_set, variant_id, last_updated) VALUES (?, ?, ?)", (variant_set, variant_id, now))
+    cur.execute(
+        (
+            "INSERT OR IGNORE INTO variant_stats(variant_set, variant_id, last_updated)"
+            " VALUES (?, ?, ?)"
+        ),
+        (variant_set, variant_id, now),
+    )
     col = None
     if kind == "sent":
         col = "sent"
@@ -147,12 +180,18 @@ def _update_variant_from_message(dbpath: Path, message_id: str, kind: str) -> No
     elif kind in ("meeting", "booked_meeting"):
         col = "meetings"
     if col:
-        cur.execute(f"UPDATE variant_stats SET {col} = COALESCE({col},0) + 1, last_updated = ? WHERE variant_set=? AND variant_id=?", (now, variant_set, variant_id))
+        cur.execute(
+            (
+                f"UPDATE variant_stats SET {col} = COALESCE({col},0) + 1, last_updated = ? "
+                "WHERE variant_set=? AND variant_id=?"
+            ),
+            (now, variant_set, variant_id),
+        )
         conn.commit()
     conn.close()
 
 
-def fetch_pending(dbpath: Path, status: str = "approved", limit: int = 100) -> List[Dict]:
+def fetch_pending(dbpath: Path, status: str = "approved", limit: int = 100) -> list[dict]:
     init_db(dbpath)
     conn = _connect(dbpath)
     cur = conn.cursor()
@@ -162,7 +201,7 @@ def fetch_pending(dbpath: Path, status: str = "approved", limit: int = 100) -> L
     return rows
 
 
-def last_reply_ts(dbpath: Path) -> Optional[datetime]:
+def last_reply_ts(dbpath: Path) -> datetime | None:
     init_db(dbpath)
     conn = _connect(dbpath)
     cur = conn.cursor()

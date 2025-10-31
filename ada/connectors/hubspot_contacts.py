@@ -1,19 +1,33 @@
 from __future__ import annotations
-from typing import Iterable
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
-from ada.core.schemas import Contact
-from ada import hubspot
+
+from collections.abc import Iterable
 from datetime import datetime
 
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-@retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(4), retry=retry_if_exception_type(Exception))
+from ada import hubspot
+from ada.core.schemas import Contact
+
+
+@retry(
+    wait=wait_exponential(min=1, max=10),
+    stop=stop_after_attempt(4),
+    retry=retry_if_exception_type(Exception),
+)
 def _safe_stream(*args, **kwargs):
     return list(hubspot.stream_contacts(*args, **kwargs))
 
 
 def get_contacts(limit: int = 1000) -> Iterable[Contact]:
     """Yield Contact models converted from hubspot.stream_contacts payloads."""
-    props = ["email", "firstname", "lastname", "lifecyclestage", "hubspot_owner_id", "lastmodifieddate"]
+    props = [
+        "email",
+        "firstname",
+        "lastname",
+        "lifecyclestage",
+        "hubspot_owner_id",
+        "lastmodifieddate",
+    ]
     for raw in _safe_stream(max_total=limit, properties=props):
         p = raw.get("properties", {}) or {}
         try:

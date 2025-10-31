@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import List, Dict, Optional
-from ada.core.schemas import OutreachPlan, Contact
-from datetime import datetime
-import re
 
+import re
+from datetime import datetime
+
+from ada.core.schemas import Contact, OutreachPlan
 
 _HHMM = re.compile(r"^(\d{2}):(\d{2})-(\d{2}):(\d{2})$")
 
@@ -26,12 +26,12 @@ def _in_quiet_hours(now: datetime, quiet_hours: str | None) -> bool:
 
 def build_plan(
     client_slug: str,
-    contacts: List[Contact],
+    contacts: list[Contact],
     daily_cap: int = 25,
     limit: int | None = None,
     variant: str | None = None,
-    overrides: Optional[Dict] = None,
-    now: Optional[datetime] = None,
+    overrides: dict | None = None,
+    now: datetime | None = None,
 ) -> OutreachPlan:
     """Select contacts with policy constraints.
 
@@ -45,11 +45,11 @@ def build_plan(
     """
     overrides = overrides or {}
     now = now or datetime.utcnow()
-    reasons: Dict[str, str] = {}
+    reasons: dict[str, str] = {}
 
     allowlist = set(overrides.get("allowlist", []) or [])
     blocklist = set(overrides.get("blocklist", []) or [])
-    domain_caps: Dict[str, int] = overrides.get("domain_caps", {}) or {}
+    domain_caps: dict[str, int] = overrides.get("domain_caps", {}) or {}
     quiet_hours = overrides.get("quiet_hours")  # "HH:MM-HH:MM" (UTC)
 
     # Quiet hours: if active, return empty selection but include reasons on all
@@ -65,12 +65,13 @@ def build_plan(
         return plan
 
     # Filter by email presence
-    pool: List[Contact] = [c for c in contacts if c.email]
+    pool: list[Contact] = [c for c in contacts if c.email]
+
     # Apply allow/block lists
     def email_or_domain(val: str) -> str:
         return val.lower().strip()
 
-    selected: List[Contact] = []
+    selected: list[Contact] = []
     for c in pool:
         em = c.email or ""
         dom = em.split("@")[-1].lower() if "@" in em else em.lower()
@@ -87,8 +88,8 @@ def build_plan(
     selected.sort(key=lambda c: (c.score or 0.0), reverse=True)
 
     # Enforce per-domain caps
-    taken_by_domain: Dict[str, int] = {}
-    capped: List[Contact] = []
+    taken_by_domain: dict[str, int] = {}
+    capped: list[Contact] = []
     for c in selected:
         em = c.email or ""
         dom = em.split("@")[-1].lower() if "@" in em else em.lower()

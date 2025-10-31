@@ -1,25 +1,27 @@
 from __future__ import annotations
-from typing import Literal, Any, Dict, List, Optional
+
 from datetime import datetime
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 
 class Contact(BaseModel):
     id: str
-    email: Optional[str]
-    first_name: Optional[str]
-    last_name: Optional[str]
-    owner_id: Optional[str]
-    lifecycle: Optional[str]
-    last_modified: Optional[datetime]
-    score: Optional[float]
-    source: Optional[str] = "hubspot"
+    email: str | None
+    first_name: str | None
+    last_name: str | None
+    owner_id: str | None
+    lifecycle: str | None
+    last_modified: datetime | None
+    score: float | None
+    source: str | None = "hubspot"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return self.dict()
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Contact":
+    def from_dict(cls, data: dict[str, Any]) -> Contact:
         return cls(**data)
 
 
@@ -29,11 +31,11 @@ class Message(BaseModel):
     contact_id: str
     channel: str = "gmail"
     role: Literal["system", "assistant", "user"] = "assistant"
-    subject: Optional[str]
-    body: Optional[str]
+    subject: str | None
+    body: str | None
     ts: datetime
     status: Literal["draft", "approved", "queued", "sent", "failed"] = "draft"
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class Thread(BaseModel):
@@ -41,18 +43,18 @@ class Thread(BaseModel):
     client_slug: str
     contact_id: str
     channel: str = "gmail"
-    last_ts: Optional[datetime]
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    last_ts: datetime | None
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class Event(BaseModel):
     id: str
     client_slug: str
     kind: Literal["opened", "replied", "bounced", "opted_out", "rate_limited", "sent"]
-    contact_id: Optional[str]
-    message_id: Optional[str]
+    contact_id: str | None
+    message_id: str | None
     ts: datetime
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class Metric(BaseModel):
@@ -71,14 +73,14 @@ class Metric(BaseModel):
 class OutreachPlan(BaseModel):
     client_slug: str
     generated_at: datetime
-    targets: List[str] = Field(default_factory=list)
+    targets: list[str] = Field(default_factory=list)
     daily_cap: int = 25
-    variant: Optional[str]
-    reasons_by_contact: Dict[str, str] = Field(default_factory=dict)
+    variant: str | None
+    reasons_by_contact: dict[str, str] = Field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return self.dict()
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "OutreachPlan":
+    def from_dict(cls, data: dict[str, Any]) -> OutreachPlan:
         return cls(**data)

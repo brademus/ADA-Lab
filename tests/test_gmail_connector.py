@@ -1,8 +1,8 @@
 import pytest
-from ada.connectors.gmail_mail import GmailConnector
+
 from ada.connectors.base import TerminalError
+from ada.connectors.gmail_mail import GmailConnector
 from ada.core.schemas import Message
-from datetime import datetime
 
 
 def test_gmail_connector_missing_creds():

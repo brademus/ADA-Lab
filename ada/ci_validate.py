@@ -1,11 +1,14 @@
 from __future__ import annotations
+
+import json
 import sys
 from pathlib import Path
-import json
+
 
 def fail(msg: str):
     print("ERROR:", msg)
     sys.exit(2)
+
 
 def validate_audits(root: Path) -> None:
     if not root.exists():
@@ -36,9 +39,11 @@ def validate_audits(root: Path) -> None:
         fail("audit validation failed")
     print("Audit validation passed")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import argparse
+
     ap = argparse.ArgumentParser()
-    ap.add_argument('audits_root', nargs='?', default='audits')
+    ap.add_argument("audits_root", nargs="?", default="audits")
     args = ap.parse_args()
     validate_audits(Path(args.audits_root))

@@ -1,8 +1,10 @@
-from pathlib import Path
-from ada.templates.library import get_variants_for_set, load_library
-from ada.orchestrator import templates
-from ada.core.schemas import Contact
 import json
+from pathlib import Path
+
+from ada.core.schemas import Contact
+from ada.orchestrator import templates
+from ada.templates.library import get_variants_for_set, load_library
+
 
 def test_load_yaml_and_render_variant(tmp_path: Path):
     lib = tmp_path
@@ -22,7 +24,16 @@ variants:
     vs = get_variants_for_set(lib, "baseline")
     assert len(vs) == 1
     v = vs[0]
-    c = Contact(id="1", email="a@example.com", first_name="Ada", last_name=None, owner_id=None, lifecycle=None, last_modified=None, score=None)
+    c = Contact(
+        id="1",
+        email="a@example.com",
+        first_name="Ada",
+        last_name=None,
+        owner_id=None,
+        lifecycle=None,
+        last_modified=None,
+        score=None,
+    )
     subj, body = templates.render_variant(c, v)
     assert subj == "Hi Ada"
     assert "a@example.com" in body
@@ -42,6 +53,15 @@ def test_load_json_default_variant_set_from_filename(tmp_path: Path):
 
 
 def test_brand_voice_used_in_legacy_renderer():
-    c = Contact(id="1", email="a@example.com", first_name="Ada", last_name=None, owner_id=None, lifecycle=None, last_modified=None, score=None)
+    c = Contact(
+        id="1",
+        email="a@example.com",
+        first_name="Ada",
+        last_name=None,
+        owner_id=None,
+        lifecycle=None,
+        last_modified=None,
+        score=None,
+    )
     subj, _ = templates.render(c, brand_voice="Curious, friendly")
     assert subj.startswith("Curious")

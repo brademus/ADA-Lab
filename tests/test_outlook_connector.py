@@ -1,6 +1,7 @@
 import pytest
-from ada.connectors.outlook_mail import OutlookConnector
+
 from ada.connectors.base import TerminalError
+from ada.connectors.outlook_mail import OutlookConnector
 from ada.core.schemas import Message
 
 
