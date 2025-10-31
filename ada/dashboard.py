@@ -157,20 +157,16 @@ def render_master_index(clients: list[ClientConfig], audits_root: Path, out_path
                         "</tr>"
                     )
                 variant_sections.append(
-                    
-                        f"<h3>Variants & Tests — {c.name} ({c.slug})</h3>\n"
-                        "<table><thead><tr>"
-                        "<th>Variant ID</th>"
-                        "<th>Sent</th>"
-                        "<th>Opens</th>"
-                        "<th>Replies</th>"
-                        "<th>Meetings</th>"
-                        "<th>Reply Rate</th>"
-                        "<th>Conversion</th>"
-                        "</tr></thead><tbody>"
-                        + "".join(rows_v)
-                        + "</tbody></table>"
-                    
+                    f"<h3>Variants & Tests — {c.name} ({c.slug})</h3>\n"
+                    "<table><thead><tr>"
+                    "<th>Variant ID</th>"
+                    "<th>Sent</th>"
+                    "<th>Opens</th>"
+                    "<th>Replies</th>"
+                    "<th>Meetings</th>"
+                    "<th>Reply Rate</th>"
+                    "<th>Conversion</th>"
+                    "</tr></thead><tbody>" + "".join(rows_v) + "</tbody></table>"
                 )
             except Exception:
                 continue

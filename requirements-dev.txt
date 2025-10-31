@@ -12,3 +12,4 @@ msal
 # Dev tooling
 ruff
 black
+pandas-stubs

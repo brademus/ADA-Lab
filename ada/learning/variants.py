@@ -93,10 +93,8 @@ def get_stats(dbpath: Path) -> list[dict[str, Any]]:
     conn = sqlite3.connect(str(dbpath))
     cur = conn.cursor()
     cur.execute(
-        
-            "SELECT variant_set, variant_id, sent, opens, replies, meetings, last_updated "
-            "FROM variant_stats ORDER BY variant_set, variant_id"
-        
+        "SELECT variant_set, variant_id, sent, opens, replies, meetings, last_updated "
+        "FROM variant_stats ORDER BY variant_set, variant_id"
     )
     rows = [
         dict(

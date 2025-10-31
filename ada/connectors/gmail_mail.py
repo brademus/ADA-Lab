@@ -27,10 +27,8 @@ class GmailConnector:
         self.client_secret = self.client_cfg.get("gmail_client_secret")
         if not (self.user and self.refresh and self.client_id and self.client_secret):
             raise TerminalError(
-                
-                    "Missing Gmail credentials in client config; set "
-                    "gmail_user, gmail_refresh_token, gmail_client_id, gmail_client_secret"
-                
+                "Missing Gmail credentials in client config; set "
+                "gmail_user, gmail_refresh_token, gmail_client_id, gmail_client_secret"
             )
 
     def _build_message(self, subject: str, body: str, to: str) -> EmailMessage:

@@ -112,10 +112,8 @@ def _run_audit_for_client(
                 else:
                     os.environ.pop("HUBSPOT_TOKEN", None)
                 print(
-                    
-                        f"[yellow]Per-client token for {c.slug} failed validation, "
-                        f"falling back to global token: {e}"
-                    
+                    f"[yellow]Per-client token for {c.slug} failed validation, "
+                    f"falling back to global token: {e}"
                 )
         contacts_csv = c_dir / "contacts.csv"
         if not skip_pull:

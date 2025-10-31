@@ -46,17 +46,11 @@ class OutlookConnector:
         self.refresh = self.client_cfg.get("refresh_token")
         # Minimal checks; real implementation would also validate tokens/scopes.
         if not (
-            self.user
-            and self.tenant
-            and self.client_id
-            and self.client_secret
-            and self.refresh
+            self.user and self.tenant and self.client_id and self.client_secret and self.refresh
         ):
             raise TerminalError(
-                
-                    "Missing Outlook credentials in client config; set "
-                    "outlook_user, tenant_id, client_id, client_secret, refresh_token"
-                
+                "Missing Outlook credentials in client config; set "
+                "outlook_user, tenant_id, client_id, client_secret, refresh_token"
             )
 
     def _build_message(self, subject: str, body: str, to: str) -> EmailMessage:
