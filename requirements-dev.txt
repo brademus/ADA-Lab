@@ -8,3 +8,7 @@ tabulate
 pyyaml
 markdown
 msal
+
+# Dev tooling
+ruff
+black
